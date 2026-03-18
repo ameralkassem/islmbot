@@ -4,16 +4,9 @@
 
 "use strict";
 
-const FOOTER = "\n─────────────────\n🌙 أثر | @AtharIslamBot";
-
-function getRandom(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function getRandomN(arr, n) {
-  const shuffled = [...arr].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, Math.min(n, arr.length));
-}
+// =============================================
+// Telegram API
+// =============================================
 
 async function callTelegram(method, body) {
   const token = process.env.BOT_TOKEN;
@@ -62,50 +55,136 @@ async function answerInlineQuery(inlineQueryId, results, cacheTime = 0) {
 }
 
 // =============================================
-// تنسيق الرسائل — مع خط أثر بالنهاية
+// مساعدات عامة
 // =============================================
 
+function getRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function getRandomN(arr, n) {
+  const shuffled = [...arr].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, Math.min(n, arr.length));
+}
+
+// =============================================
+// تنسيق الرسائل — التصميم الجديد
+// =============================================
+
+// إطار صغير مع أيقونة
+function card(icon, body, footerIcon = "🌙") {
+  return [
+    `╭──────── ${icon} ────────╮`,
+    "",
+    body,
+    "",
+    `╰──────── ${footerIcon} ────────╯`,
+  ].join("\n");
+}
+
+// ---- هل تعلم ----
 function formatDidYouKnow(item) {
-  return `🧠 <b>هل تعلم؟</b>\n\n${item.text}\n\n📚 <b>التصنيف:</b> ${item.category}${FOOTER}`;
+  const body = [
+    "   هل تعلم؟",
+    "",
+    "   " + item.text,
+    "",
+    "   📚  " + item.category,
+  ].join("\n");
+  return card("🧠", body);
 }
 
+// ---- ذكر من أذكار الصباح/المساء/النوم (له count) ----
 function formatThikr(item) {
-  let msg = `📿 <b>ذكر</b>\n\n${item.text}`;
-  if (item.count) msg += `\n\n🔢 <b>التكرار:</b> ${item.count} ${item.count === 1 ? "مرة" : "مرات"}`;
-  if (item.source) msg += `\n📖 <b>المصدر:</b> ${item.source}`;
-  return msg + FOOTER;
+  const lines = ["   " + item.text];
+  if (item.count) {
+    lines.push("");
+    lines.push("   🔢 " + (item.count === 1 ? "مرة واحدة" : item.count + " مرات"));
+  }
+  if (item.source) lines.push("   📖 " + item.source);
+  return card("📿", lines.join("\n"));
 }
 
+// ---- ذكر عام (له occasion بدل count) ----
 function formatGeneralThikr(item) {
-  let msg = `📿 <b>ذكر</b>\n\n${item.text}`;
-  if (item.occasion) msg += `\n\n📌 <b>المناسبة:</b> ${item.occasion}`;
-  if (item.source)   msg += `\n📖 <b>المصدر:</b> ${item.source}`;
-  return msg + FOOTER;
+  const lines = ["   " + item.text];
+  if (item.occasion) { lines.push(""); lines.push("   📌  " + item.occasion); }
+  if (item.source)   lines.push("   📖 " + item.source);
+  return card("📿", lines.join("\n"));
 }
 
+// ---- آية قرآنية ----
 function formatAyah(item) {
-  return `📖 <b>آية قرآنية</b>\n\n﴿${item.text}﴾\n\n📍 <b>${item.surah} - الآية ${item.ayah_number}</b>${FOOTER}`;
+  const body = [
+    "   ﴿" + item.text + "﴾",
+    "",
+    "   📍 " + item.surah + " · الآية " + item.ayah_number,
+  ].join("\n");
+  return card("📖", body);
 }
 
+// ---- حديث نبوي ----
 function formatHadith(item) {
-  let msg = `🕌 <b>حديث نبوي</b>\n\nقال رسول الله ﷺ: "${item.text}"`;
-  if (item.source)   msg += `\n\n📖 <b>المصدر:</b> ${item.source}`;
-  if (item.narrator) msg += `\n👤 <b>الراوي:</b> ${item.narrator}`;
-  return msg + FOOTER;
+  const lines = [
+    "   قال رسول الله ﷺ:",
+    "",
+    "   «" + item.text + "»",
+    "",
+  ];
+  if (item.narrator) lines.push("   👤 " + item.narrator);
+  if (item.source)   lines.push("   📖 " + item.source);
+  return card("🕌", lines.join("\n"));
 }
 
+// ---- دعاء ----
 function formatDua(item) {
-  let msg = `🤲 <b>دعاء</b>\n\n${item.text}`;
-  if (item.occasion) msg += `\n\n📌 <b>المناسبة:</b> ${item.occasion}`;
-  if (item.source)   msg += `\n📖 <b>المصدر:</b> ${item.source}`;
-  return msg + FOOTER;
+  const lines = ["   " + item.text];
+  if (item.occasion) { lines.push(""); lines.push("   📌  " + item.occasion); }
+  if (item.source)   lines.push("   📖 " + item.source);
+  return card("🤲", lines.join("\n"));
 }
 
+// ---- سؤال المسابقة (بدون خيارات — في الأزرار) ----
 function formatQuizQuestion(item) {
-  const optionEmojis = ["🅰️", "🅱️", "🅲️", "🅳️"];
-  const opts = item.options.map((o, i) => `${optionEmojis[i]} ${o}`).join("\n");
-  return `🏆 <b>مسابقة إسلامية</b>\n\n❓ ${item.question}\n\n${opts}\n\n<i>اختر الإجابة الصحيحة:</i>`;
+  return [
+    "╭─────── 🏆 مسابقة ───────╮",
+    "",
+    "❓  " + item.question,
+    "",
+    "╰──────── أثر 🌙 ────────╯",
+  ].join("\n");
 }
+
+// ---- نتيجة المسابقة بعد الإجابة ----
+function formatQuizResult(item, chosenIndex) {
+  const isCorrect = chosenIndex === item.correct;
+  const lines = [
+    "╭─────── 🏆 مسابقة ───────╮",
+    "",
+    "❓  " + item.question,
+    "",
+  ];
+
+  if (isCorrect) {
+    lines.push("✅  الإجابة: " + item.options[item.correct]);
+  } else {
+    lines.push("❌  إجابتك: " + item.options[chosenIndex]);
+    lines.push("✅  الصواب: " + item.options[item.correct]);
+  }
+
+  if (item.explanation) {
+    lines.push("");
+    lines.push("💡  " + item.explanation);
+  }
+
+  lines.push("");
+  lines.push("╰──────── أثر 🌙 ────────╯");
+  return lines.join("\n");
+}
+
+// =============================================
+// لوحات المفاتيح
+// =============================================
 
 function makeInlineKeyboard(buttons) {
   return { inline_keyboard: buttons };
@@ -115,14 +194,17 @@ function makeReplyKeyboard() {
   return {
     keyboard: [
       [{ text: "📿 أذكار الصباح" }, { text: "📿 أذكار المساء" }],
-      [{ text: "🧠 هل تعلم" },      { text: "🏆 مسابقة" }],
-      [{ text: "📿 أذكار النوم" },   { text: "🤲 دعاء" }],
+      [{ text: "🌙 أذكار النوم" },  { text: "📿 ذكر" }],
       [{ text: "📖 آية" },           { text: "🕌 حديث" }],
+      [{ text: "🤲 دعاء" },          { text: "🧠 هل تعلم" }],
+      [{ text: "🏆 مسابقة" }],
     ],
     resize_keyboard: true,
-    persistent: true,
+    is_persistent: true,
   };
 }
+
+// =============================================
 
 module.exports = {
   getRandom,
@@ -139,6 +221,7 @@ module.exports = {
   formatHadith,
   formatDua,
   formatQuizQuestion,
+  formatQuizResult,
   makeInlineKeyboard,
   makeReplyKeyboard,
 };

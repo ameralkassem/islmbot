@@ -22,6 +22,7 @@ const {
   formatHadith,
   formatDua,
   formatQuizQuestion,
+  formatQuizResult,
   makeInlineKeyboard,
   makeReplyKeyboard,
 } = require("../../helpers/utils");
@@ -74,15 +75,15 @@ async function handleMessage(msg) {
   if (text === "/start" || text.startsWith("/start ")) { await handleStart(chatId);      return; }
   if (text === "/help")                                 { await handleHelp(chatId);       return; }
 
-  if (text === "/هل_تعلم"     || text === "/didyouknow"   || text === "🧠 هل تعلم")        { await handleDidYouKnow(chatId);   return; }
+  if (text === "/هل_تعلم"      || text === "/didyouknow"  || text === "🧠 هل تعلم")        { await handleDidYouKnow(chatId);   return; }
   if (text === "/اذكار_الصباح" || text === "/morning"     || text === "📿 أذكار الصباح")   { await handleAzkarMorning(chatId); return; }
   if (text === "/اذكار_المساء" || text === "/evening"     || text === "📿 أذكار المساء")   { await handleAzkarEvening(chatId); return; }
-  if (text === "/اذكار_النوم"  || text === "/sleep"       || text === "📿 أذكار النوم")    { await handleAzkarSleep(chatId);   return; }
-  if (text === "/ذكر"          || text === "/thikr")                                        { await handleThikr(chatId);        return; }
-  if (text === "/دعاء"         || text === "/dua"         || text === "🤲 دعاء")            { await handleDua(chatId);          return; }
-  if (text === "/آية"          || text === "/ayah"        || text === "📖 آية")             { await handleAyah(chatId);         return; }
-  if (text === "/حديث"         || text === "/hadith"      || text === "🕌 حديث")            { await handleHadith(chatId);       return; }
-  if (text === "/مسابقة"       || text === "/quiz"        || text === "🏆 مسابقة")          { await handleQuiz(chatId);         return; }
+  if (text === "/اذكار_النوم"  || text === "/sleep"       || text === "🌙 أذكار النوم")    { await handleAzkarSleep(chatId);   return; }
+  if (text === "/ذكر"           || text === "/thikr"       || text === "📿 ذكر")            { await handleThikr(chatId);        return; }
+  if (text === "/دعاء"          || text === "/dua"         || text === "🤲 دعاء")           { await handleDua(chatId);          return; }
+  if (text === "/آية"           || text === "/ayah"        || text === "📖 آية")            { await handleAyah(chatId);         return; }
+  if (text === "/حديث"          || text === "/hadith"      || text === "🕌 حديث")           { await handleHadith(chatId);       return; }
+  if (text === "/مسابقة"        || text === "/quiz"        || text === "🏆 مسابقة")         { await handleQuiz(chatId);         return; }
 }
 
 // =============================================
@@ -165,26 +166,12 @@ async function handleQuizAnswer(cq, data) {
     return;
   }
 
-  const isCorrect   = chosen === item.correct;
-  const explanation = item.explanation || "";
-  let alertText = isCorrect
-    ? `✅ إجابة صحيحة! أحسنت 🎉\n\n${explanation}`
-    : `❌ إجابة خاطئة!\n\nالجواب الصحيح: ${item.options[item.correct]}\n\n${explanation}`;
-  if (alertText.length > 200) alertText = alertText.substring(0, 197) + "...";
-
-  await answerCallback(cq.id, alertText, true);
+  await answerCallback(cq.id);
 
   const chatId = cq.message && cq.message.chat.id;
   const msgId  = cq.message && cq.message.message_id;
   if (chatId && msgId) {
-    const optionEmojis = ["🅰️", "🅱️", "🅲️", "🅳️"];
-    const opts = item.options.map((o, i) => {
-      const mark = i === item.correct ? "✅" : chosen === i ? "❌" : "◻️";
-      return `${optionEmojis[i]} ${o} ${mark}`;
-    }).join("\n");
-    const resultEmoji = isCorrect ? "✅" : "❌";
-    const newText = `🏆 <b>مسابقة إسلامية</b>\n\n❓ ${item.question}\n\n${opts}\n\n${resultEmoji} ${isCorrect ? "إجابة صحيحة!" : `الجواب: ${item.options[item.correct]}`}`;
-    await editMessage(chatId, msgId, newText, {
+    await editMessage(chatId, msgId, formatQuizResult(item, chosen), {
       reply_markup: makeInlineKeyboard([[{ text: "سؤال آخر 🔄", callback_data: "quiz_next" }]]),
     });
   }
@@ -212,7 +199,7 @@ async function handleInlineQuery(iq) {
   } else if (q.includes("مساء")) {
     await serveAzkarInline(iqId, "azkar-evening.json", "📿 أذكار المساء", ts);
   } else if (q.includes("نوم")) {
-    await serveAzkarInline(iqId, "azkar-sleep.json", "📿 أذكار النوم", ts);
+    await serveAzkarInline(iqId, "azkar-sleep.json", "🌙 أذكار النوم", ts);
   } else if (q.includes("ذكر") || q.includes("اذكار") || q.includes("أذكار")) {
     await serveGeneralThikrInline(iqId, ts);
   } else if (q.includes("دعاء") || q.includes("ادعية") || q.includes("أدعية")) {
@@ -230,7 +217,6 @@ async function handleInlineQuery(iq) {
 
 // =============================================
 // Inline — القائمة الافتراضية (بدون كلمة بحث)
-// 9 تصنيفات رئيسية، كل وحدة ترسل محتوى عشوائي
 // =============================================
 async function serveDefaultInline(iqId, ts) {
   const categories = [
@@ -477,47 +463,58 @@ async function serveSearchInline(iqId, query, ts) {
 // =============================================
 
 async function handleStart(chatId) {
-  const text = `﷽
-
-✨ <b>أهلاً بك في أثر — رفيقك الإيماني اليومي</b>
-
-❝ وَذَكِّرْ فَإِنَّ الذِّكْرَىٰ تَنفَعُ الْمُؤْمِنِينَ ❞
-
-اختر من القائمة أو اكتب @AtharIslamBot في أي محادثة:
-
-📿 <b>الأذكـار</b> — صباح · مساء · نوم
-📖 <b>القـرآن</b> — آيات تنير قلبك
-🕌 <b>الحديث</b> — من كلام المصطفى ﷺ
-🤲 <b>الدعـاء</b> — أدعية لكل حال
-🧠 <b>هل تعلم</b> — حقائق تزيد بصيرتك
-🏆 <b>مسابقة</b> — اختبر معرفتك الدينية
-
-─────────────────
-🌙 <b>أثر</b> · اترك أثراً في يومك`;
+  const text = [
+    "╭──────── ✨ أثر ────────╮",
+    "",
+    "   بسم الله الرحمن الرحيم",
+    "",
+    "   ❝ وَذَكِّرْ فَإِنَّ الذِّكْرَىٰ",
+    "     تَنفَعُ الْمُؤْمِنِينَ ❞",
+    "",
+    "   أهلاً بك في <b>أثر</b>",
+    "   رفيقك الإيماني اليومي 🌙",
+    "",
+    "   📿  الأذكـار — صباح · مساء · نوم",
+    "   📖  آيـات — من كلام الله",
+    "   🕌  أحاديـث — من سنة النبي ﷺ",
+    "   🤲  أدعيـة — لكل وقت وحال",
+    "   🧠  هل تعلم — فوائد دينية",
+    "   🏆  مسابقة — اختبر نفسك",
+    "",
+    "   اكتب <b>@AtharIslamBot</b> في أي محادثة",
+    "   لمشاركة المحتوى مباشرةً ✨",
+    "",
+    "╰──────── 🌙 ────────╯",
+  ].join("\n");
   await sendMessage(chatId, text, { reply_markup: makeReplyKeyboard() });
 }
 
 async function handleHelp(chatId) {
-  const text = `📋 <b>قائمة الأوامر</b>
-
-📿 <b>الأذكار:</b>
-/اذكار_الصباح أو /morning — أذكار الصباح
-/اذكار_المساء أو /evening — أذكار المساء
-/اذكار_النوم أو /sleep — أذكار النوم
-/ذكر أو /thikr — ذكر عشوائي
-
-🤲 <b>الأدعية والآيات:</b>
-/دعاء أو /dua — دعاء عشوائي
-/آية أو /ayah — آية قرآنية عشوائية
-/حديث أو /hadith — حديث نبوي
-
-🧠 <b>هل تعلم:</b>
-/هل_تعلم أو /didyouknow — معلومة دينية
-
-🏆 <b>المسابقات:</b>
-/مسابقة أو /quiz — سؤال عشوائي
-
-<i>يمكنك أيضاً كتابة @AtharIslamBot في أي محادثة للاستخدام inline!</i>`;
+  const text = [
+    "╭──────── 📋 المساعدة ────────╮",
+    "",
+    "   <b>الأذكار:</b>",
+    "   /اذكار_الصباح · /morning",
+    "   /اذكار_المساء · /evening",
+    "   /اذكار_النوم · /sleep",
+    "   /ذكر · /thikr",
+    "",
+    "   <b>القرآن والحديث:</b>",
+    "   /آية · /ayah",
+    "   /حديث · /hadith",
+    "",
+    "   <b>الأدعية والمعلومات:</b>",
+    "   /دعاء · /dua",
+    "   /هل_تعلم · /didyouknow",
+    "",
+    "   <b>المسابقة:</b>",
+    "   /مسابقة · /quiz",
+    "",
+    "   💡 اكتب @AtharIslamBot في أي",
+    "   محادثة للاستخدام inline",
+    "",
+    "╰──────── 🌙 ────────╯",
+  ].join("\n");
   await sendMessage(chatId, text, { reply_markup: makeReplyKeyboard() });
 }
 
@@ -527,54 +524,68 @@ async function handleDidYouKnow(chatId) {
   await sendMessage(chatId, formatDidYouKnow(item), { reply_markup: kb });
 }
 
+// ---- أذكار الصباح ----
 async function handleAzkarMorning(chatId) {
-  const items  = loadData("azkar-morning.json");
-  const chunks = chunkAzkar(items, 10);
-  const title  = "☀️ <b>أذكار الصباح</b>\n\nاللهم بك أصبحنا وبك أمسينا...\n\n";
-  for (let i = 0; i < chunks.length; i++) {
-    const part = i === 0 ? title : `<b>تابع — أذكار الصباح (${i + 1})</b>\n\n`;
-    const body = chunks[i].map((z, j) => {
-      let line = `${i * 10 + j + 1}. ${z.text}`;
-      if (z.count)  line += `\n   🔢 ${z.count} ${z.count === 1 ? "مرة" : "مرات"}`;
-      if (z.source) line += `\n   📖 ${z.source}`;
-      return line;
-    }).join("\n\n");
-    await sendMessage(chatId, part + body);
-    if (i < chunks.length - 1) await delay(300);
-  }
+  const items = loadData("azkar-morning.json");
+  await sendAzkarFull(chatId, items, "☀️", "أذكار الصباح", "اللهم بك أصبحنا وبك أمسينا", "☀️ أتممت أذكار الصباح\nتقبّل الله منك ✨");
 }
 
+// ---- أذكار المساء ----
 async function handleAzkarEvening(chatId) {
-  const items  = loadData("azkar-evening.json");
-  const chunks = chunkAzkar(items, 10);
-  const title  = "🌆 <b>أذكار المساء</b>\n\nاللهم بك أمسينا وبك أصبحنا...\n\n";
-  for (let i = 0; i < chunks.length; i++) {
-    const part = i === 0 ? title : `<b>تابع — أذكار المساء (${i + 1})</b>\n\n`;
-    const body = chunks[i].map((z, j) => {
-      let line = `${i * 10 + j + 1}. ${z.text}`;
-      if (z.count)  line += `\n   🔢 ${z.count} ${z.count === 1 ? "مرة" : "مرات"}`;
-      if (z.source) line += `\n   📖 ${z.source}`;
-      return line;
-    }).join("\n\n");
-    await sendMessage(chatId, part + body);
-    if (i < chunks.length - 1) await delay(300);
-  }
+  const items = loadData("azkar-evening.json");
+  await sendAzkarFull(chatId, items, "🌆", "أذكار المساء", "اللهم بك أمسينا وبك أصبحنا", "🌆 أتممت أذكار المساء\nتقبّل الله منك ✨");
 }
 
+// ---- أذكار النوم ----
 async function handleAzkarSleep(chatId) {
-  const items  = loadData("azkar-sleep.json");
-  const chunks = chunkAzkar(items, 10);
-  const title  = "🌙 <b>أذكار النوم</b>\n\nبسمك اللهم أموت وأحيا...\n\n";
-  for (let i = 0; i < chunks.length; i++) {
-    const part = i === 0 ? title : `<b>تابع — أذكار النوم (${i + 1})</b>\n\n`;
-    const body = chunks[i].map((z, j) => {
-      let line = `${i * 10 + j + 1}. ${z.text}`;
-      if (z.count)  line += `\n   🔢 ${z.count} ${z.count === 1 ? "مرة" : "مرات"}`;
-      if (z.source) line += `\n   📖 ${z.source}`;
-      return line;
-    }).join("\n\n");
-    await sendMessage(chatId, part + body);
-    if (i < chunks.length - 1) await delay(300);
+  const items = loadData("azkar-sleep.json");
+  await sendAzkarFull(chatId, items, "🌙", "أذكار النوم", "بسمك اللهم أموت وأحيا", "🌙 أتممت أذكار النوم\nنوماً هنيئاً وراحة مباركة ✨");
+}
+
+// ---- إرسال قائمة الأذكار كاملة ----
+const NUM_EMOJIS = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
+
+async function sendAzkarFull(chatId, items, icon, title, intro, footer) {
+  const CHUNK = 10;
+  const chunks = [];
+  for (let i = 0; i < items.length; i += CHUNK) chunks.push(items.slice(i, i + CHUNK));
+
+  for (let ci = 0; ci < chunks.length; ci++) {
+    const chunk = chunks[ci];
+    const isFirst = ci === 0;
+    const isLast  = ci === chunks.length - 1;
+
+    const lines = [];
+
+    if (isFirst) {
+      lines.push(`╭──────── ${icon} ${title} ────────╮`);
+      lines.push("");
+      lines.push(`   ${intro}`);
+      lines.push("");
+    } else {
+      lines.push(`╭──────── ${icon} ${title} (${ci + 1}) ────────╮`);
+      lines.push("");
+    }
+
+    chunk.forEach((z, j) => {
+      const num = NUM_EMOJIS[j] || `${ci * CHUNK + j + 1}.`;
+      lines.push(`   ${num}  ${z.text}`);
+      if (z.count) {
+        lines.push("   " + (z.count === 1 ? "🔢 مرة واحدة" : `🔢 ${z.count} مرات`));
+      }
+      if (z.source) lines.push(`   📖 ${z.source}`);
+      if (j < chunk.length - 1) lines.push("   ━━━━━━━━━━━━━━");
+    });
+
+    lines.push("");
+    if (isLast) {
+      lines.push(`   ${footer}`);
+      lines.push("");
+    }
+    lines.push("╰──────── 🌙 ────────╯");
+
+    await sendMessage(chatId, lines.join("\n"));
+    if (ci < chunks.length - 1) await delay(300);
   }
 }
 
@@ -608,9 +619,8 @@ async function handleQuiz(chatId) {
 }
 
 function buildQuizKeyboard(item) {
-  const optionEmojis = ["🅰️", "🅱️", "🅲️", "🅳️"];
   const rows = item.options.map((opt, i) => [
-    { text: `${optionEmojis[i]} ${opt}`, callback_data: `quiz_${item.id}_${i}` },
+    { text: `${i + 1} · ${opt}`, callback_data: `quiz_${item.id}_${i}` },
   ]);
   return makeInlineKeyboard(rows);
 }
@@ -620,10 +630,25 @@ async function handleMyChatMember(update) {
   const newStatus = update.new_chat_member && update.new_chat_member.status;
   if (chat.type === "group" || chat.type === "supergroup") {
     if (newStatus === "member" || newStatus === "administrator") {
-      await sendMessage(
-        chat.id,
-        `﷽\n\n🌙 أهلاً بكم مع <b>أثر</b> — رفيقكم الإيماني اليومي!\n\nسأشارككم الأذكار والأدعية والآيات والمعلومات الإسلامية.\n\nاكتبوا /start لمعرفة الأوامر.`
-      );
+      const text = [
+        "╭──────── ✨ أثر ────────╮",
+        "",
+        "   السلام عليكم ورحمة الله 🌙",
+        "",
+        "   أنا <b>أثر</b> — رفيقكم الإيماني!",
+        "   سأشارككم كل يوم:",
+        "",
+        "   📿  الأذكار والأدعية",
+        "   📖  الآيات القرآنية",
+        "   🕌  الأحاديث النبوية",
+        "   🧠  المعلومات الإسلامية",
+        "   🏆  مسابقات دينية",
+        "",
+        "   اكتب /start للبدء ✨",
+        "",
+        "╰──────── 🌙 ────────╯",
+      ].join("\n");
+      await sendMessage(chat.id, text);
       console.log(`Bot added to group: ${chat.id} — ${chat.title}`);
     } else if (newStatus === "kicked" || newStatus === "left") {
       console.log(`Bot removed from group: ${chat.id} — ${chat.title}`);
@@ -634,12 +659,6 @@ async function handleMyChatMember(update) {
 // =============================================
 // مساعدات داخلية
 // =============================================
-function chunkAzkar(arr, size) {
-  const chunks = [];
-  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
-  return chunks;
-}
-
 function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
