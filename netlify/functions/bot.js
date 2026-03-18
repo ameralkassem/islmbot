@@ -26,7 +26,6 @@ const {
   makeReplyKeyboard,
 } = require("../../helpers/utils");
 
-// ملفات البيانات — __dirname متاح مباشرة في CommonJS
 const dataDir = path.resolve(__dirname, "../../data");
 
 function loadData(filename) {
@@ -46,15 +45,12 @@ const handler = async (event) => {
   if (event.httpMethod !== "POST") {
     return { statusCode: 200, body: "Bot is running ✅" };
   }
-
   try {
     const update = JSON.parse(event.body || "{}");
     await handleUpdate(update);
   } catch (err) {
     console.error("Handler error:", err);
   }
-
-  // دائماً نرجع 200 عشان تيليغرام ما يعيد المحاولة
   return { statusCode: 200, body: JSON.stringify({ ok: true }) };
 };
 
@@ -62,22 +58,10 @@ const handler = async (event) => {
 // توزيع التحديثات
 // =============================================
 async function handleUpdate(update) {
-  if (update.message) {
-    await handleMessage(update.message);
-    return;
-  }
-  if (update.callback_query) {
-    await handleCallbackQuery(update.callback_query);
-    return;
-  }
-  if (update.inline_query) {
-    await handleInlineQuery(update.inline_query);
-    return;
-  }
-  if (update.my_chat_member) {
-    await handleMyChatMember(update.my_chat_member);
-    return;
-  }
+  if (update.message)        { await handleMessage(update.message);              return; }
+  if (update.callback_query) { await handleCallbackQuery(update.callback_query); return; }
+  if (update.inline_query)   { await handleInlineQuery(update.inline_query);     return; }
+  if (update.my_chat_member) { await handleMyChatMember(update.my_chat_member);  return; }
 }
 
 // =============================================
@@ -87,50 +71,18 @@ async function handleMessage(msg) {
   const chatId = msg.chat.id;
   const text   = (msg.text || "").trim();
 
-  if (text === "/start" || text.startsWith("/start ")) {
-    await handleStart(chatId);
-    return;
-  }
-  if (text === "/help") {
-    await handleHelp(chatId);
-    return;
-  }
-  if (text === "/هل_تعلم" || text === "/didyouknow" || text === "🧠 هل تعلم") {
-    await handleDidYouKnow(chatId);
-    return;
-  }
-  if (text === "/اذكار_الصباح" || text === "/morning" || text === "📿 أذكار الصباح") {
-    await handleAzkarMorning(chatId);
-    return;
-  }
-  if (text === "/اذكار_المساء" || text === "/evening" || text === "📿 أذكار المساء") {
-    await handleAzkarEvening(chatId);
-    return;
-  }
-  if (text === "/اذكار_النوم" || text === "/sleep" || text === "📿 أذكار النوم") {
-    await handleAzkarSleep(chatId);
-    return;
-  }
-  if (text === "/ذكر" || text === "/thikr") {
-    await handleThikr(chatId);
-    return;
-  }
-  if (text === "/دعاء" || text === "/dua" || text === "🤲 دعاء") {
-    await handleDua(chatId);
-    return;
-  }
-  if (text === "/آية" || text === "/ayah" || text === "📖 آية") {
-    await handleAyah(chatId);
-    return;
-  }
-  if (text === "/حديث" || text === "/hadith" || text === "🕌 حديث") {
-    await handleHadith(chatId);
-    return;
-  }
-  if (text === "/مسابقة" || text === "/quiz" || text === "🏆 مسابقة") {
-    await handleQuiz(chatId);
-    return;
-  }
+  if (text === "/start" || text.startsWith("/start ")) { await handleStart(chatId);      return; }
+  if (text === "/help")                                 { await handleHelp(chatId);       return; }
+
+  if (text === "/هل_تعلم"     || text === "/didyouknow"   || text === "🧠 هل تعلم")        { await handleDidYouKnow(chatId);   return; }
+  if (text === "/اذكار_الصباح" || text === "/morning"     || text === "📿 أذكار الصباح")   { await handleAzkarMorning(chatId); return; }
+  if (text === "/اذكار_المساء" || text === "/evening"     || text === "📿 أذكار المساء")   { await handleAzkarEvening(chatId); return; }
+  if (text === "/اذكار_النوم"  || text === "/sleep"       || text === "📿 أذكار النوم")    { await handleAzkarSleep(chatId);   return; }
+  if (text === "/ذكر"          || text === "/thikr")                                        { await handleThikr(chatId);        return; }
+  if (text === "/دعاء"         || text === "/dua"         || text === "🤲 دعاء")            { await handleDua(chatId);          return; }
+  if (text === "/آية"          || text === "/ayah"        || text === "📖 آية")             { await handleAyah(chatId);         return; }
+  if (text === "/حديث"         || text === "/hadith"      || text === "🕌 حديث")            { await handleHadith(chatId);       return; }
+  if (text === "/مسابقة"       || text === "/quiz"        || text === "🏆 مسابقة")          { await handleQuiz(chatId);         return; }
 }
 
 // =============================================
@@ -141,63 +93,58 @@ async function handleCallbackQuery(cq) {
   const msgId  = cq.message && cq.message.message_id;
   const data   = cq.data || "";
 
-  // ---- هل تعلم ----
   if (data === "didyouknow_next") {
     const item = getRandom(loadData("did-you-know.json"));
-    const text = formatDidYouKnow(item);
-    const kb   = makeInlineKeyboard([[{ text: "معلومة أخرى 🔄", callback_data: "didyouknow_next" }]]);
     await answerCallback(cq.id);
-    await editMessage(chatId, msgId, text, { reply_markup: kb });
+    await editMessage(chatId, msgId, formatDidYouKnow(item), {
+      reply_markup: makeInlineKeyboard([[{ text: "معلومة أخرى 🔄", callback_data: "didyouknow_next" }]]),
+    });
     return;
   }
 
-  // ---- مسابقة: سؤال آخر (قبل startsWith) ----
+  // سؤال آخر — قبل startsWith("quiz_")
   if (data === "quiz_next") {
     await answerCallback(cq.id);
     const item = getRandom(loadData("quiz.json"));
-    const text = formatQuizQuestion(item);
-    const kb   = buildQuizKeyboard(item);
-    await editMessage(chatId, msgId, text, { reply_markup: kb });
+    await editMessage(chatId, msgId, formatQuizQuestion(item), { reply_markup: buildQuizKeyboard(item) });
     return;
   }
 
-  // ---- مسابقة: اختيار إجابة ----
   if (data.startsWith("quiz_")) {
     await handleQuizAnswer(cq, data);
     return;
   }
 
-  // ---- أزرار "آخر" ----
   if (data === "thikr_next") {
     await answerCallback(cq.id);
     const item = getRandom(loadData("azkar-general.json"));
-    const text = formatGeneralThikr(item);
-    const kb   = makeInlineKeyboard([[{ text: "ذكر آخر 🔄", callback_data: "thikr_next" }]]);
-    await editMessage(chatId, msgId, text, { reply_markup: kb });
+    await editMessage(chatId, msgId, formatGeneralThikr(item), {
+      reply_markup: makeInlineKeyboard([[{ text: "ذكر آخر 🔄", callback_data: "thikr_next" }]]),
+    });
     return;
   }
   if (data === "dua_next") {
     await answerCallback(cq.id);
     const item = getRandom(loadData("duas.json"));
-    const text = formatDua(item);
-    const kb   = makeInlineKeyboard([[{ text: "دعاء آخر 🔄", callback_data: "dua_next" }]]);
-    await editMessage(chatId, msgId, text, { reply_markup: kb });
+    await editMessage(chatId, msgId, formatDua(item), {
+      reply_markup: makeInlineKeyboard([[{ text: "دعاء آخر 🔄", callback_data: "dua_next" }]]),
+    });
     return;
   }
   if (data === "ayah_next") {
     await answerCallback(cq.id);
     const item = getRandom(loadData("ayat.json"));
-    const text = formatAyah(item);
-    const kb   = makeInlineKeyboard([[{ text: "آية أخرى 🔄", callback_data: "ayah_next" }]]);
-    await editMessage(chatId, msgId, text, { reply_markup: kb });
+    await editMessage(chatId, msgId, formatAyah(item), {
+      reply_markup: makeInlineKeyboard([[{ text: "آية أخرى 🔄", callback_data: "ayah_next" }]]),
+    });
     return;
   }
   if (data === "hadith_next") {
     await answerCallback(cq.id);
     const item = getRandom(loadData("ahadith.json"));
-    const text = formatHadith(item);
-    const kb   = makeInlineKeyboard([[{ text: "حديث آخر 🔄", callback_data: "hadith_next" }]]);
-    await editMessage(chatId, msgId, text, { reply_markup: kb });
+    await editMessage(chatId, msgId, formatHadith(item), {
+      reply_markup: makeInlineKeyboard([[{ text: "حديث آخر 🔄", callback_data: "hadith_next" }]]),
+    });
     return;
   }
 
@@ -212,9 +159,7 @@ async function handleQuizAnswer(cq, data) {
   const quizId = parseInt(parts[1]);
   const chosen = parseInt(parts[2]);
 
-  const items = loadData("quiz.json");
-  const item  = items.find((q) => q.id === quizId);
-
+  const item = loadData("quiz.json").find((q) => q.id === quizId);
   if (!item) {
     await answerCallback(cq.id, "انتهت صلاحية السؤال", true);
     return;
@@ -222,12 +167,9 @@ async function handleQuizAnswer(cq, data) {
 
   const isCorrect   = chosen === item.correct;
   const explanation = item.explanation || "";
-  let alertText;
-  if (isCorrect) {
-    alertText = `✅ إجابة صحيحة! أحسنت 🎉\n\n${explanation}`;
-  } else {
-    alertText = `❌ إجابة خاطئة!\n\nالجواب الصحيح: ${item.options[item.correct]}\n\n${explanation}`;
-  }
+  let alertText = isCorrect
+    ? `✅ إجابة صحيحة! أحسنت 🎉\n\n${explanation}`
+    : `❌ إجابة خاطئة!\n\nالجواب الصحيح: ${item.options[item.correct]}\n\n${explanation}`;
   if (alertText.length > 200) alertText = alertText.substring(0, 197) + "...";
 
   await answerCallback(cq.id, alertText, true);
@@ -236,14 +178,15 @@ async function handleQuizAnswer(cq, data) {
   const msgId  = cq.message && cq.message.message_id;
   if (chatId && msgId) {
     const optionEmojis = ["🅰️", "🅱️", "🅲️", "🅳️"];
-    const resultEmoji  = isCorrect ? "✅" : "❌";
     const opts = item.options.map((o, i) => {
       const mark = i === item.correct ? "✅" : chosen === i ? "❌" : "◻️";
       return `${optionEmojis[i]} ${o} ${mark}`;
     }).join("\n");
+    const resultEmoji = isCorrect ? "✅" : "❌";
     const newText = `🏆 <b>مسابقة إسلامية</b>\n\n❓ ${item.question}\n\n${opts}\n\n${resultEmoji} ${isCorrect ? "إجابة صحيحة!" : `الجواب: ${item.options[item.correct]}`}`;
-    const kb = makeInlineKeyboard([[{ text: "سؤال آخر 🔄", callback_data: "quiz_next" }]]);
-    await editMessage(chatId, msgId, newText, { reply_markup: kb });
+    await editMessage(chatId, msgId, newText, {
+      reply_markup: makeInlineKeyboard([[{ text: "سؤال آخر 🔄", callback_data: "quiz_next" }]]),
+    });
   }
 }
 
@@ -251,112 +194,282 @@ async function handleQuizAnswer(cq, data) {
 // Inline Queries
 // =============================================
 async function handleInlineQuery(iq) {
-  const query = (iq.query || "").trim().toLowerCase();
+  const query = (iq.query || "").trim();
   const iqId  = iq.id;
+  const ts    = Date.now();
 
-  if (!query || query.includes("هل تعلم") || query.includes("معلومة")) {
-    await serveDidYouKnowInline(iqId);
-  } else if (query.includes("صباح") || query.includes("morning")) {
-    await serveAzkarInline(iqId, "azkar-morning.json", "📿 أذكار الصباح");
-  } else if (query.includes("مساء") || query.includes("evening")) {
-    await serveAzkarInline(iqId, "azkar-evening.json", "📿 أذكار المساء");
-  } else if (query.includes("نوم") || query.includes("sleep")) {
-    await serveAzkarInline(iqId, "azkar-sleep.json", "📿 أذكار النوم");
-  } else if (query.includes("دعاء") || query.includes("dua")) {
-    await serveDuasInline(iqId);
-  } else if (query.includes("آية") || query.includes("ayah") || query.includes("قرآن")) {
-    await serveAyatInline(iqId);
-  } else if (query.includes("حديث") || query.includes("hadith")) {
-    await serveAhadithInline(iqId);
-  } else if (query.includes("مسابقة") || query.includes("quiz")) {
-    await serveQuizInline(iqId);
-  } else if (query.includes("ذكر") || query.includes("thikr") || query.includes("اذكار")) {
-    await serveThikrInline(iqId);
+  if (!query) {
+    await serveDefaultInline(iqId, ts);
+    return;
+  }
+
+  const q = query.toLowerCase();
+
+  if (q.includes("هل تعلم") || q.includes("معلومة")) {
+    await serveDidYouKnowInline(iqId, ts);
+  } else if (q.includes("صباح")) {
+    await serveAzkarInline(iqId, "azkar-morning.json", "📿 أذكار الصباح", ts);
+  } else if (q.includes("مساء")) {
+    await serveAzkarInline(iqId, "azkar-evening.json", "📿 أذكار المساء", ts);
+  } else if (q.includes("نوم")) {
+    await serveAzkarInline(iqId, "azkar-sleep.json", "📿 أذكار النوم", ts);
+  } else if (q.includes("ذكر") || q.includes("اذكار") || q.includes("أذكار")) {
+    await serveGeneralThikrInline(iqId, ts);
+  } else if (q.includes("دعاء") || q.includes("ادعية") || q.includes("أدعية")) {
+    await serveDuasInline(iqId, ts);
+  } else if (q.includes("آية") || q.includes("اية") || q.includes("قرآن") || q.includes("قران")) {
+    await serveAyatInline(iqId, ts);
+  } else if (q.includes("حديث") || q.includes("احاديث") || q.includes("أحاديث")) {
+    await serveAhadithInline(iqId, ts);
+  } else if (q.includes("مسابقة") || q.includes("سؤال")) {
+    await serveQuizInline(iqId, ts);
   } else {
-    await serveDefaultInline(iqId);
+    await serveSearchInline(iqId, query, ts);
   }
 }
 
-function makeArticleResult(id, title, description, messageText) {
-  return {
-    type: "article",
-    id: String(id),
-    title,
-    description,
-    input_message_content: { message_text: messageText, parse_mode: "HTML" },
-  };
-}
-
-async function serveDidYouKnowInline(iqId) {
-  const selected = getRandomN(loadData("did-you-know.json"), 8);
-  const results  = selected.map((item) =>
-    makeArticleResult(item.id, `🧠 ${item.category}`, item.text.substring(0, 80), formatDidYouKnow(item))
-  );
-  await answerInlineQuery(iqId, results);
-}
-
-async function serveAzkarInline(iqId, filename, title) {
-  const selected = getRandomN(loadData(filename), 8);
-  const results  = selected.map((item, i) =>
-    makeArticleResult(`az_${i}`, title, item.text.substring(0, 80), formatThikr(item))
-  );
-  await answerInlineQuery(iqId, results);
-}
-
-async function serveDuasInline(iqId) {
-  const selected = getRandomN(loadData("duas.json"), 8);
-  const results  = selected.map((item) =>
-    makeArticleResult(`dua_${item.id}`, `🤲 ${item.occasion}`, item.text.substring(0, 80), formatDua(item))
-  );
-  await answerInlineQuery(iqId, results);
-}
-
-async function serveAyatInline(iqId) {
-  const selected = getRandomN(loadData("ayat.json"), 8);
-  const results  = selected.map((item) =>
-    makeArticleResult(`ay_${item.id}`, `📖 سورة ${item.surah} - آية ${item.ayah_number}`, item.text.substring(0, 80), formatAyah(item))
-  );
-  await answerInlineQuery(iqId, results);
-}
-
-async function serveAhadithInline(iqId) {
-  const selected = getRandomN(loadData("ahadith.json"), 8);
-  const results  = selected.map((item) =>
-    makeArticleResult(`hd_${item.id}`, `🕌 ${item.source}`, item.text.substring(0, 80), formatHadith(item))
-  );
-  await answerInlineQuery(iqId, results);
-}
-
-async function serveThikrInline(iqId) {
-  const selected = getRandomN(loadData("azkar-general.json"), 8);
-  const results  = selected.map((item) =>
-    makeArticleResult(`th_${item.id}`, `📿 ${item.occasion}`, item.text.substring(0, 80), formatGeneralThikr(item))
-  );
-  await answerInlineQuery(iqId, results);
-}
-
-async function serveQuizInline(iqId) {
-  const selected = getRandomN(loadData("quiz.json"), 8);
-  const results  = selected.map((item) =>
-    makeArticleResult(`qz_${item.id}`, `🏆 ${item.category}`, item.question.substring(0, 80), formatQuizQuestion(item))
-  );
-  await answerInlineQuery(iqId, results);
-}
-
-async function serveDefaultInline(iqId) {
-  const dyk1  = getRandom(loadData("did-you-know.json"));
-  const dyk2  = getRandom(loadData("did-you-know.json"));
-  const dua1  = getRandom(loadData("duas.json"));
-  const dua2  = getRandom(loadData("duas.json"));
-  const ayah1 = getRandom(loadData("ayat.json"));
-  const results = [
-    makeArticleResult("d1", `🧠 ${dyk1.category}`,  "هل تعلم؟",       formatDidYouKnow(dyk1)),
-    makeArticleResult("d2", `🤲 ${dua1.occasion}`,   "دعاء",            formatDua(dua1)),
-    makeArticleResult("d3", `📖 آية قرآنية`,          "آية كريمة",       formatAyah(ayah1)),
-    makeArticleResult("d4", `🧠 ${dyk2.category}`,  "معلومة إسلامية",  formatDidYouKnow(dyk2)),
-    makeArticleResult("d5", `🤲 ${dua2.occasion}`,   "دعاء من السنة",   formatDua(dua2)),
+// =============================================
+// Inline — القائمة الافتراضية (بدون كلمة بحث)
+// 9 تصنيفات رئيسية، كل وحدة ترسل محتوى عشوائي
+// =============================================
+async function serveDefaultInline(iqId, ts) {
+  const categories = [
+    {
+      id: `${ts}_0`,
+      title: "🧠 هل تعلم",
+      desc: "اضغط لإرسال معلومة دينية عشوائية",
+      text: formatDidYouKnow(getRandom(loadData("did-you-know.json"))),
+    },
+    {
+      id: `${ts}_1`,
+      title: "📿 أذكار الصباح",
+      desc: "اضغط لإرسال ذكر من أذكار الصباح",
+      text: formatThikr(getRandom(loadData("azkar-morning.json"))),
+    },
+    {
+      id: `${ts}_2`,
+      title: "📿 أذكار المساء",
+      desc: "اضغط لإرسال ذكر من أذكار المساء",
+      text: formatThikr(getRandom(loadData("azkar-evening.json"))),
+    },
+    {
+      id: `${ts}_3`,
+      title: "🌙 أذكار النوم",
+      desc: "اضغط لإرسال ذكر من أذكار النوم",
+      text: formatThikr(getRandom(loadData("azkar-sleep.json"))),
+    },
+    {
+      id: `${ts}_4`,
+      title: "📿 ذكر عشوائي",
+      desc: "اضغط لإرسال ذكر من الأذكار العامة",
+      text: formatGeneralThikr(getRandom(loadData("azkar-general.json"))),
+    },
+    {
+      id: `${ts}_5`,
+      title: "🤲 دعاء",
+      desc: "اضغط لإرسال دعاء عشوائي",
+      text: formatDua(getRandom(loadData("duas.json"))),
+    },
+    {
+      id: `${ts}_6`,
+      title: "📖 آية قرآنية",
+      desc: "اضغط لإرسال آية عشوائية",
+      text: formatAyah(getRandom(loadData("ayat.json"))),
+    },
+    {
+      id: `${ts}_7`,
+      title: "🕌 حديث نبوي",
+      desc: "اضغط لإرسال حديث عشوائي",
+      text: formatHadith(getRandom(loadData("ahadith.json"))),
+    },
   ];
-  await answerInlineQuery(iqId, results);
+
+  // المسابقة — تحتاج reply_markup خاص
+  const quizItem = getRandom(loadData("quiz.json"));
+
+  const results = categories.map((c) => ({
+    type: "article",
+    id: c.id,
+    title: c.title,
+    description: c.desc,
+    input_message_content: { message_text: c.text, parse_mode: "HTML" },
+  }));
+
+  // إضافة المسابقة كآخر عنصر مع keyboard
+  results.push({
+    type: "article",
+    id: `${ts}_8`,
+    title: "🏆 مسابقة إسلامية",
+    description: "اضغط لإرسال سؤال عشوائي",
+    input_message_content: { message_text: formatQuizQuestion(quizItem), parse_mode: "HTML" },
+    reply_markup: buildQuizKeyboard(quizItem),
+  });
+
+  await answerInlineQuery(iqId, results, 0);
+}
+
+// =============================================
+// Inline — نتائج البحث حسب التصنيف (10 نتائج)
+// =============================================
+async function serveDidYouKnowInline(iqId, ts) {
+  const selected = getRandomN(loadData("did-you-know.json"), 10);
+  const results  = selected.map((item, i) => ({
+    type: "article",
+    id: `${ts}_dyk_${i}`,
+    title: `🧠 ${item.category}`,
+    description: item.text.substring(0, 70),
+    input_message_content: { message_text: formatDidYouKnow(item), parse_mode: "HTML" },
+  }));
+  await answerInlineQuery(iqId, results, 0);
+}
+
+async function serveAzkarInline(iqId, filename, label, ts) {
+  const selected = getRandomN(loadData(filename), 10);
+  const results  = selected.map((item, i) => ({
+    type: "article",
+    id: `${ts}_az_${i}`,
+    title: label,
+    description: item.text.substring(0, 70),
+    input_message_content: { message_text: formatThikr(item), parse_mode: "HTML" },
+  }));
+  await answerInlineQuery(iqId, results, 0);
+}
+
+async function serveGeneralThikrInline(iqId, ts) {
+  const selected = getRandomN(loadData("azkar-general.json"), 10);
+  const results  = selected.map((item, i) => ({
+    type: "article",
+    id: `${ts}_gaz_${i}`,
+    title: `📿 ${item.occasion}`,
+    description: item.text.substring(0, 70),
+    input_message_content: { message_text: formatGeneralThikr(item), parse_mode: "HTML" },
+  }));
+  await answerInlineQuery(iqId, results, 0);
+}
+
+async function serveDuasInline(iqId, ts) {
+  const selected = getRandomN(loadData("duas.json"), 10);
+  const results  = selected.map((item, i) => ({
+    type: "article",
+    id: `${ts}_dua_${i}`,
+    title: `🤲 ${item.occasion}`,
+    description: item.text.substring(0, 70),
+    input_message_content: { message_text: formatDua(item), parse_mode: "HTML" },
+  }));
+  await answerInlineQuery(iqId, results, 0);
+}
+
+async function serveAyatInline(iqId, ts) {
+  const selected = getRandomN(loadData("ayat.json"), 10);
+  const results  = selected.map((item, i) => ({
+    type: "article",
+    id: `${ts}_ay_${i}`,
+    title: `📖 ${item.surah} — الآية ${item.ayah_number}`,
+    description: item.text.substring(0, 70),
+    input_message_content: { message_text: formatAyah(item), parse_mode: "HTML" },
+  }));
+  await answerInlineQuery(iqId, results, 0);
+}
+
+async function serveAhadithInline(iqId, ts) {
+  const selected = getRandomN(loadData("ahadith.json"), 10);
+  const results  = selected.map((item, i) => ({
+    type: "article",
+    id: `${ts}_hd_${i}`,
+    title: `🕌 ${item.source}`,
+    description: item.text.substring(0, 70),
+    input_message_content: { message_text: formatHadith(item), parse_mode: "HTML" },
+  }));
+  await answerInlineQuery(iqId, results, 0);
+}
+
+async function serveQuizInline(iqId, ts) {
+  const selected = getRandomN(loadData("quiz.json"), 10);
+  const results  = selected.map((item, i) => ({
+    type: "article",
+    id: `${ts}_qz_${i}`,
+    title: `🏆 ${item.category}`,
+    description: item.question.substring(0, 70),
+    input_message_content: { message_text: formatQuizQuestion(item), parse_mode: "HTML" },
+    reply_markup: buildQuizKeyboard(item),
+  }));
+  await answerInlineQuery(iqId, results, 0);
+}
+
+// =============================================
+// Inline — بحث نصي في كل الملفات
+// =============================================
+async function serveSearchInline(iqId, query, ts) {
+  const q       = query.toLowerCase();
+  const results = [];
+
+  const pushResult = (id, title, description, text, keyboard) => {
+    const entry = {
+      type: "article",
+      id,
+      title,
+      description: description.substring(0, 70),
+      input_message_content: { message_text: text, parse_mode: "HTML" },
+    };
+    if (keyboard) entry.reply_markup = keyboard;
+    results.push(entry);
+  };
+
+  // did-you-know
+  loadData("did-you-know.json")
+    .filter((i) => i.text.includes(q) || i.category.includes(q))
+    .slice(0, 3)
+    .forEach((item, i) =>
+      pushResult(`${ts}_sdyk_${i}`, `🧠 ${item.category}`, item.text, formatDidYouKnow(item))
+    );
+
+  // آيات
+  loadData("ayat.json")
+    .filter((i) => i.text.includes(q) || i.surah.includes(q))
+    .slice(0, 2)
+    .forEach((item, i) =>
+      pushResult(`${ts}_say_${i}`, `📖 ${item.surah} — الآية ${item.ayah_number}`, item.text, formatAyah(item))
+    );
+
+  // أحاديث
+  loadData("ahadith.json")
+    .filter((i) => i.text.includes(q))
+    .slice(0, 2)
+    .forEach((item, i) =>
+      pushResult(`${ts}_shd_${i}`, `🕌 ${item.source}`, item.text, formatHadith(item))
+    );
+
+  // أدعية
+  loadData("duas.json")
+    .filter((i) => i.text.includes(q) || i.occasion.includes(q))
+    .slice(0, 2)
+    .forEach((item, i) =>
+      pushResult(`${ts}_sdua_${i}`, `🤲 ${item.occasion}`, item.text, formatDua(item))
+    );
+
+  // أذكار عامة
+  loadData("azkar-general.json")
+    .filter((i) => i.text.includes(q) || i.occasion.includes(q))
+    .slice(0, 2)
+    .forEach((item, i) =>
+      pushResult(`${ts}_saz_${i}`, `📿 ${item.occasion}`, item.text, formatGeneralThikr(item))
+    );
+
+  // مسابقات
+  loadData("quiz.json")
+    .filter((i) => i.question.includes(q))
+    .slice(0, 1)
+    .forEach((item, i) =>
+      pushResult(`${ts}_sqz_${i}`, `🏆 ${item.category}`, item.question, formatQuizQuestion(item), buildQuizKeyboard(item))
+    );
+
+  // إذا ما في نتائج → اعرض القائمة الافتراضية
+  if (results.length === 0) {
+    await serveDefaultInline(iqId, ts);
+    return;
+  }
+
+  await answerInlineQuery(iqId, results.slice(0, 10), 0);
 }
 
 // =============================================
@@ -422,7 +535,7 @@ async function handleAzkarMorning(chatId) {
     const part = i === 0 ? title : `<b>تابع — أذكار الصباح (${i + 1})</b>\n\n`;
     const body = chunks[i].map((z, j) => {
       let line = `${i * 10 + j + 1}. ${z.text}`;
-      if (z.count) line += `\n   🔢 ${z.count} ${z.count === 1 ? "مرة" : "مرات"}`;
+      if (z.count)  line += `\n   🔢 ${z.count} ${z.count === 1 ? "مرة" : "مرات"}`;
       if (z.source) line += `\n   📖 ${z.source}`;
       return line;
     }).join("\n\n");
@@ -439,7 +552,7 @@ async function handleAzkarEvening(chatId) {
     const part = i === 0 ? title : `<b>تابع — أذكار المساء (${i + 1})</b>\n\n`;
     const body = chunks[i].map((z, j) => {
       let line = `${i * 10 + j + 1}. ${z.text}`;
-      if (z.count) line += `\n   🔢 ${z.count} ${z.count === 1 ? "مرة" : "مرات"}`;
+      if (z.count)  line += `\n   🔢 ${z.count} ${z.count === 1 ? "مرة" : "مرات"}`;
       if (z.source) line += `\n   📖 ${z.source}`;
       return line;
     }).join("\n\n");
@@ -456,7 +569,7 @@ async function handleAzkarSleep(chatId) {
     const part = i === 0 ? title : `<b>تابع — أذكار النوم (${i + 1})</b>\n\n`;
     const body = chunks[i].map((z, j) => {
       let line = `${i * 10 + j + 1}. ${z.text}`;
-      if (z.count) line += `\n   🔢 ${z.count} ${z.count === 1 ? "مرة" : "مرات"}`;
+      if (z.count)  line += `\n   🔢 ${z.count} ${z.count === 1 ? "مرة" : "مرات"}`;
       if (z.source) line += `\n   📖 ${z.source}`;
       return line;
     }).join("\n\n");
@@ -491,8 +604,7 @@ async function handleHadith(chatId) {
 
 async function handleQuiz(chatId) {
   const item = getRandom(loadData("quiz.json"));
-  const kb   = buildQuizKeyboard(item);
-  await sendMessage(chatId, formatQuizQuestion(item), { reply_markup: kb });
+  await sendMessage(chatId, formatQuizQuestion(item), { reply_markup: buildQuizKeyboard(item) });
 }
 
 function buildQuizKeyboard(item) {
@@ -524,9 +636,7 @@ async function handleMyChatMember(update) {
 // =============================================
 function chunkAzkar(arr, size) {
   const chunks = [];
-  for (let i = 0; i < arr.length; i += size) {
-    chunks.push(arr.slice(i, i + size));
-  }
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
   return chunks;
 }
 

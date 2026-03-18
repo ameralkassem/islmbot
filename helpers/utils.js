@@ -2,6 +2,10 @@
 // مساعدات البوت الإسلامي — أثر | Athar
 // =============================================
 
+"use strict";
+
+const FOOTER = "\n─────────────────\n🌙 أثر | @AtharIslamBot";
+
 function getRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -13,8 +17,8 @@ function getRandomN(arr, n) {
 
 async function callTelegram(method, body) {
   const token = process.env.BOT_TOKEN;
-  const url = `https://api.telegram.org/bot${token}/${method}`;
-  const res = await fetch(url, {
+  const url   = `https://api.telegram.org/bot${token}/${method}`;
+  const res   = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify(body),
@@ -49,7 +53,7 @@ async function answerCallback(callbackQueryId, text = "", showAlert = false) {
   });
 }
 
-async function answerInlineQuery(inlineQueryId, results, cacheTime = 30) {
+async function answerInlineQuery(inlineQueryId, results, cacheTime = 0) {
   return callTelegram("answerInlineQuery", {
     inline_query_id: inlineQueryId,
     results,
@@ -58,41 +62,43 @@ async function answerInlineQuery(inlineQueryId, results, cacheTime = 30) {
 }
 
 // =============================================
-// تنسيق الرسائل
+// تنسيق الرسائل — مع خط أثر بالنهاية
 // =============================================
 
 function formatDidYouKnow(item) {
-  return `🧠 <b>هل تعلم؟</b>\n\n${item.text}\n\n📚 <b>التصنيف:</b> ${item.category}`;
+  return `🧠 <b>هل تعلم؟</b>\n\n${item.text}\n\n📚 <b>التصنيف:</b> ${item.category}${FOOTER}`;
 }
 
 function formatThikr(item) {
   let msg = `📿 <b>ذكر</b>\n\n${item.text}`;
-  if (item.count) msg += `\n\n🔢 <b>العدد:</b> ${item.count} ${item.count === 1 ? "مرة" : "مرات"}`;
+  if (item.count) msg += `\n\n🔢 <b>التكرار:</b> ${item.count} ${item.count === 1 ? "مرة" : "مرات"}`;
   if (item.source) msg += `\n📖 <b>المصدر:</b> ${item.source}`;
-  return msg;
+  return msg + FOOTER;
 }
 
 function formatGeneralThikr(item) {
-  let msg = `📿 <b>ذكر — ${item.occasion}</b>\n\n${item.text}`;
-  if (item.source) msg += `\n\n📖 <b>المصدر:</b> ${item.source}`;
-  return msg;
+  let msg = `📿 <b>ذكر</b>\n\n${item.text}`;
+  if (item.occasion) msg += `\n\n📌 <b>المناسبة:</b> ${item.occasion}`;
+  if (item.source)   msg += `\n📖 <b>المصدر:</b> ${item.source}`;
+  return msg + FOOTER;
 }
 
 function formatAyah(item) {
-  return `📖 <b>آية قرآنية</b>\n\n﴿${item.text}﴾\n\n📍 <b>سورة ${item.surah} - الآية ${item.ayah_number}</b>`;
+  return `📖 <b>آية قرآنية</b>\n\n﴿${item.text}﴾\n\n📍 <b>${item.surah} - الآية ${item.ayah_number}</b>${FOOTER}`;
 }
 
 function formatHadith(item) {
   let msg = `🕌 <b>حديث نبوي</b>\n\nقال رسول الله ﷺ: "${item.text}"`;
-  if (item.narrator) msg += `\n\n👤 <b>الراوي:</b> ${item.narrator}`;
-  if (item.source) msg += `\n📖 <b>المصدر:</b> ${item.source}`;
-  return msg;
+  if (item.source)   msg += `\n\n📖 <b>المصدر:</b> ${item.source}`;
+  if (item.narrator) msg += `\n👤 <b>الراوي:</b> ${item.narrator}`;
+  return msg + FOOTER;
 }
 
 function formatDua(item) {
-  let msg = `🤲 <b>دعاء — ${item.occasion}</b>\n\n${item.text}`;
-  if (item.source) msg += `\n\n📖 <b>المصدر:</b> ${item.source}`;
-  return msg;
+  let msg = `🤲 <b>دعاء</b>\n\n${item.text}`;
+  if (item.occasion) msg += `\n\n📌 <b>المناسبة:</b> ${item.occasion}`;
+  if (item.source)   msg += `\n📖 <b>المصدر:</b> ${item.source}`;
+  return msg + FOOTER;
 }
 
 function formatQuizQuestion(item) {
@@ -109,9 +115,9 @@ function makeReplyKeyboard() {
   return {
     keyboard: [
       [{ text: "📿 أذكار الصباح" }, { text: "📿 أذكار المساء" }],
-      [{ text: "🧠 هل تعلم" }, { text: "🏆 مسابقة" }],
-      [{ text: "📿 أذكار النوم" }, { text: "🤲 دعاء" }],
-      [{ text: "📖 آية" }, { text: "🕌 حديث" }],
+      [{ text: "🧠 هل تعلم" },      { text: "🏆 مسابقة" }],
+      [{ text: "📿 أذكار النوم" },   { text: "🤲 دعاء" }],
+      [{ text: "📖 آية" },           { text: "🕌 حديث" }],
     ],
     resize_keyboard: true,
     persistent: true,
