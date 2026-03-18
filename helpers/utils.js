@@ -38,6 +38,15 @@ async function editMessage(chatId, messageId, text, extra = {}) {
   });
 }
 
+async function editMessageInline(inlineMessageId, text, extra = {}) {
+  return callTelegram("editMessageText", {
+    inline_message_id: inlineMessageId,
+    text,
+    parse_mode: "HTML",
+    ...extra,
+  });
+}
+
 async function answerCallback(callbackQueryId, text = "", showAlert = false) {
   return callTelegram("answerCallbackQuery", {
     callback_query_id: callbackQueryId,
@@ -68,90 +77,95 @@ function getRandomN(arr, n) {
 }
 
 // =============================================
-// تنسيق الرسائل — التصميم الجديد
+// تنسيق الرسائل
 // =============================================
 
-// إطار صغير مع أيقونة
-function card(icon, body, footerIcon = "🌙") {
-  return [
-    `╭──────── ${icon} ────────╮`,
-    "",
-    body,
-    "",
-    `╰──────── ${footerIcon} ────────╯`,
-  ].join("\n");
-}
+const SEP   = "ـــــــــــــــــــــــ";
+const BRAND = "🌙 أثر | @AtharIslamBot";
 
 // ---- هل تعلم ----
 function formatDidYouKnow(item) {
-  const body = [
-    "   هل تعلم؟",
+  return [
+    "🧠 هل تعلم؟",
     "",
-    "   " + item.text,
+    item.text,
     "",
-    "   📚  " + item.category,
+    "📚 التصنيف: " + item.category,
+    "",
+    SEP,
+    BRAND,
   ].join("\n");
-  return card("🧠", body);
 }
 
 // ---- ذكر من أذكار الصباح/المساء/النوم (له count) ----
 function formatThikr(item) {
-  const lines = ["   " + item.text];
-  if (item.count) {
-    lines.push("");
-    lines.push("   🔢 " + (item.count === 1 ? "مرة واحدة" : item.count + " مرات"));
-  }
-  if (item.source) lines.push("   📖 " + item.source);
-  return card("📿", lines.join("\n"));
+  const lines = ["📿 ذكر", "", item.text];
+  const meta  = [];
+  if (item.count)  meta.push("🔢 التكرار: " + (item.count === 1 ? "مرة واحدة" : item.count + " مرات"));
+  if (item.source) meta.push("📖 المصدر: " + item.source);
+  if (meta.length) { lines.push(""); lines.push(...meta); }
+  lines.push("", SEP, BRAND);
+  return lines.join("\n");
 }
 
-// ---- ذكر عام (له occasion بدل count) ----
+// ---- ذكر عام (له occasion) ----
 function formatGeneralThikr(item) {
-  const lines = ["   " + item.text];
-  if (item.occasion) { lines.push(""); lines.push("   📌  " + item.occasion); }
-  if (item.source)   lines.push("   📖 " + item.source);
-  return card("📿", lines.join("\n"));
+  const lines = ["📿 ذكر", "", item.text];
+  const meta  = [];
+  if (item.occasion) meta.push("📌 المناسبة: " + item.occasion);
+  if (item.source)   meta.push("📖 المصدر: " + item.source);
+  if (meta.length) { lines.push(""); lines.push(...meta); }
+  lines.push("", SEP, BRAND);
+  return lines.join("\n");
 }
 
 // ---- آية قرآنية ----
 function formatAyah(item) {
-  const body = [
-    "   ﴿" + item.text + "﴾",
+  return [
+    "📖 آية قرآنية",
     "",
-    "   📍 " + item.surah + " · الآية " + item.ayah_number,
+    "﴿" + item.text + "﴾",
+    "",
+    "📍 " + item.surah + " · الآية " + item.ayah_number,
+    "",
+    SEP,
+    BRAND,
   ].join("\n");
-  return card("📖", body);
 }
 
 // ---- حديث نبوي ----
 function formatHadith(item) {
   const lines = [
-    "   قال رسول الله ﷺ:",
+    "🕌 حديث نبوي",
     "",
-    "   «" + item.text + "»",
+    "قال رسول الله ﷺ: «" + item.text + "»",
     "",
   ];
-  if (item.narrator) lines.push("   👤 " + item.narrator);
-  if (item.source)   lines.push("   📖 " + item.source);
-  return card("🕌", lines.join("\n"));
+  if (item.narrator) lines.push("👤 الراوي: " + item.narrator);
+  if (item.source)   lines.push("📖 المصدر: " + item.source);
+  lines.push("", SEP, BRAND);
+  return lines.join("\n");
 }
 
 // ---- دعاء ----
 function formatDua(item) {
-  const lines = ["   " + item.text];
-  if (item.occasion) { lines.push(""); lines.push("   📌  " + item.occasion); }
-  if (item.source)   lines.push("   📖 " + item.source);
-  return card("🤲", lines.join("\n"));
+  const lines = ["🤲 دعاء", "", item.text];
+  const meta  = [];
+  if (item.occasion) meta.push("📌 المناسبة: " + item.occasion);
+  if (item.source)   meta.push("📖 المصدر: " + item.source);
+  if (meta.length) { lines.push(""); lines.push(...meta); }
+  lines.push("", SEP, BRAND);
+  return lines.join("\n");
 }
 
-// ---- سؤال المسابقة (بدون خيارات — في الأزرار) ----
+// ---- سؤال المسابقة ----
 function formatQuizQuestion(item) {
   return [
-    "╭─────── 🏆 مسابقة ───────╮",
+    "🏆 مسابقة إسلامية",
     "",
-    "❓  " + item.question,
+    "❓ " + item.question,
     "",
-    "╰──────── أثر 🌙 ────────╯",
+    "اختر الإجابة الصحيحة:",
   ].join("\n");
 }
 
@@ -159,26 +173,22 @@ function formatQuizQuestion(item) {
 function formatQuizResult(item, chosenIndex) {
   const isCorrect = chosenIndex === item.correct;
   const lines = [
-    "╭─────── 🏆 مسابقة ───────╮",
+    "🏆 مسابقة إسلامية",
     "",
-    "❓  " + item.question,
+    "❓ " + item.question,
     "",
   ];
-
   if (isCorrect) {
-    lines.push("✅  الإجابة: " + item.options[item.correct]);
+    lines.push("✅ الإجابة الصحيحة: " + item.options[item.correct]);
   } else {
-    lines.push("❌  إجابتك: " + item.options[chosenIndex]);
-    lines.push("✅  الصواب: " + item.options[item.correct]);
+    lines.push("❌ إجابتك: " + item.options[chosenIndex]);
+    lines.push("✅ الصواب: " + item.options[item.correct]);
   }
-
   if (item.explanation) {
     lines.push("");
-    lines.push("💡  " + item.explanation);
+    lines.push("💡 " + item.explanation);
   }
-
-  lines.push("");
-  lines.push("╰──────── أثر 🌙 ────────╯");
+  lines.push("", SEP, BRAND);
   return lines.join("\n");
 }
 
@@ -212,6 +222,7 @@ module.exports = {
   callTelegram,
   sendMessage,
   editMessage,
+  editMessageInline,
   answerCallback,
   answerInlineQuery,
   formatDidYouKnow,
