@@ -1,0 +1,9 @@
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[functions."bot"]
+  external_node_modules = []
+
+[functions."scheduled-azkar"]
+  external_node_modules = []

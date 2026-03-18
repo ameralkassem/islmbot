@@ -1,0 +1,12 @@
+{
+  "name": "islm-bot",
+  "version": "1.0.0",
+  "description": "بوت تيليغرام إسلامي - أثر | Athar",
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
