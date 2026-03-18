@@ -1,6 +1,7 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+  included_files = ["data/**"]
 
 [functions."bot"]
   external_node_modules = []

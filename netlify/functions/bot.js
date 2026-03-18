@@ -3,19 +3,19 @@
 // Netlify Function تستقبل كل تحديثات تيليغرام
 // =============================================
 
-import { createRequire } from "module";
+import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
 
 // ملفات البيانات
 const dataDir = path.join(__dirname, "../../data");
 
 function loadData(filename) {
   try {
-    return require(path.join(dataDir, filename));
+    const raw = readFileSync(path.join(dataDir, filename), "utf-8");
+    return JSON.parse(raw);
   } catch {
     return [];
   }
