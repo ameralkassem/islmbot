@@ -555,15 +555,15 @@ async function handleStart(chatId, chat) {
     await send(chatId, chat.type, text, { reply_markup: makeReplyKeyboard() });
   } else {
     const text = [
-      "🌙 أهلاً! أنا <b>أثر</b> — رفيقكم الإيماني",
+      "🌙 أهلاً! أنا <b>أثر</b> — رفيقك الإيماني",
       "",
-      "📋 اكتبوا /menu لعرض القائمة الرئيسية",
+      "📋 اكتب /menu لعرض القائمة الرئيسية",
       "",
-      "أو استخدموا الأوامر مباشرة:",
+      "أو استخدم الأوامر مباشرة:",
       "/ayah · /hadith · /dua · /thikr",
       "/quiz · /didyouknow · /morning · /evening · /sleep",
       "",
-      "أو اكتبوا @AtharIslamBot بأي محادثة ✨",
+      "أو اكتب @AtharIslamBot في أي محادثة ✨",
       "",
       SEP,
       BRAND,
@@ -729,8 +729,8 @@ async function handleMyChatMember(update) {
       const text = [
         "السلام عليكم ورحمة الله 🌙",
         "",
-        "أنا <b>أثر</b> — رفيقكم الإيماني!",
-        "سأشارككم كل يوم:",
+        "أنا <b>أثر</b> — رفيقك الإيماني!",
+        "سأشاركك كل يوم:",
         "",
         "📿  الأذكار والأدعية",
         "📖  الآيات القرآنية",
