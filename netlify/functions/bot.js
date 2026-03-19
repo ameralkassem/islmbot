@@ -74,10 +74,13 @@ async function handleUpdate(update) {
 // =============================================
 async function handleMessage(msg) {
   const chatId = msg.chat.id;
-  const text   = (msg.text || "").trim();
+  const chat   = msg.chat;
+  // شيل @BotUsername من الأمر (للمجموعات: /sleep@AtharIslamBot → /sleep)
+  const raw  = (msg.text || "").trim();
+  const text = raw.startsWith("/") ? raw.split("@")[0] : raw;
 
-  if (text === "/start" || text.startsWith("/start ")) { await handleStart(chatId);      return; }
-  if (text === "/help")                                 { await handleHelp(chatId);       return; }
+  if (text === "/start" || text.startsWith("/start ")) { await handleStart(chatId, chat);      return; }
+  if (text === "/help")                                 { await handleHelp(chatId, chat);       return; }
 
   if (text === "/هل_تعلم"      || text === "/didyouknow"  || text === "🧠 هل تعلم")        { await handleDidYouKnow(chatId);   return; }
   if (text === "/اذكار_الصباح" || text === "/morning"     || text === "📿 أذكار الصباح")   { await handleAzkarMorning(chatId); return; }
@@ -88,6 +91,7 @@ async function handleMessage(msg) {
   if (text === "/آية"           || text === "/ayah"        || text === "📖 آية")            { await handleAyah(chatId);         return; }
   if (text === "/حديث"          || text === "/hadith"      || text === "🕌 حديث")           { await handleHadith(chatId);       return; }
   if (text === "/مسابقة"        || text === "/quiz"        || text === "🏆 مسابقة")         { await handleQuiz(chatId);         return; }
+  if (text === "/menu")                                                                      { await handleMenu(chatId);         return; }
 }
 
 // =============================================
@@ -104,6 +108,23 @@ async function handleCallbackQuery(cq) {
     inlineMsgId
       ? editMessageInline(inlineMsgId, text, extra)
       : editMessage(chatId, msgId, text, extra);
+
+  if (data.startsWith("menu_")) {
+    await answerCallback(cq.id);
+    const menuActions = {
+      menu_morning:    () => handleAzkarMorning(chatId),
+      menu_evening:    () => handleAzkarEvening(chatId),
+      menu_sleep:      () => handleAzkarSleep(chatId),
+      menu_thikr:      () => handleThikr(chatId),
+      menu_ayah:       () => handleAyah(chatId),
+      menu_hadith:     () => handleHadith(chatId),
+      menu_dua:        () => handleDua(chatId),
+      menu_didyouknow: () => handleDidYouKnow(chatId),
+      menu_quiz:       () => handleQuiz(chatId),
+    };
+    if (menuActions[data]) await menuActions[data]();
+    return;
+  }
 
   if (data === "didyouknow_next") {
     const item = getRandom(loadData("did-you-know.json"));
@@ -464,32 +485,51 @@ async function serveSearchInline(iqId, query, ts) {
 // Handlers الأوامر
 // =============================================
 
-async function handleStart(chatId) {
-  const text = [
-    "﷽",
-    "",
-    "أهلاً بك في <b>أثر</b> 🌙",
-    "رفيقك الإيماني اليومي",
-    "",
-    "❝ وَذَكِّرْ فَإِنَّ الذِّكْرَىٰ تَنفَعُ الْمُؤْمِنِينَ ❞",
-    "",
-    "📿  أذكار الصباح · المساء · النوم",
-    "📖  آيات من كلام الله",
-    "🕌  أحاديث من سنة النبي ﷺ",
-    "🤲  أدعية لكل وقت وحال",
-    "🧠  هل تعلم — معلومات دينية",
-    "🏆  مسابقة — اختبر نفسك",
-    "",
-    "اكتب <b>@AtharIslamBot</b> في أي محادثة",
-    "لمشاركة المحتوى inline ✨",
-    "",
-    SEP,
-    BRAND,
-  ].join("\n");
-  await sendMessage(chatId, text, { reply_markup: makeReplyKeyboard() });
+async function handleStart(chatId, chat) {
+  const isPrivate = chat && chat.type === "private";
+
+  if (isPrivate) {
+    const text = [
+      "﷽",
+      "",
+      "أهلاً بك في <b>أثر</b> 🌙",
+      "رفيقك الإيماني اليومي",
+      "",
+      "❝ وَذَكِّرْ فَإِنَّ الذِّكْرَىٰ تَنفَعُ الْمُؤْمِنِينَ ❞",
+      "",
+      "📿  أذكار الصباح · المساء · النوم",
+      "📖  آيات من كلام الله",
+      "🕌  أحاديث من سنة النبي ﷺ",
+      "🤲  أدعية لكل وقت وحال",
+      "🧠  هل تعلم — معلومات دينية",
+      "🏆  مسابقة — اختبر نفسك",
+      "",
+      "اكتب <b>@AtharIslamBot</b> في أي محادثة",
+      "لمشاركة المحتوى inline ✨",
+      "",
+      SEP,
+      BRAND,
+    ].join("\n");
+    await sendMessage(chatId, text, { reply_markup: makeReplyKeyboard() });
+  } else {
+    const text = [
+      "🌙 أهلاً! أنا <b>أثر</b> — رفيقكم الإيماني",
+      "",
+      "استخدموني بالأوامر:",
+      "/ayah · /hadith · /dua · /thikr",
+      "/quiz · /didyouknow · /morning · /evening · /sleep",
+      "",
+      "أو اكتبوا @AtharIslamBot بأي محادثة ✨",
+      "",
+      SEP,
+      BRAND,
+    ].join("\n");
+    await sendMessage(chatId, text);
+  }
 }
 
-async function handleHelp(chatId) {
+async function handleHelp(chatId, chat) {
+  const isPrivate = chat && chat.type === "private";
   const text = [
     "📋 <b>قائمة الأوامر</b>",
     "",
@@ -515,7 +555,24 @@ async function handleHelp(chatId) {
     SEP,
     BRAND,
   ].join("\n");
-  await sendMessage(chatId, text, { reply_markup: makeReplyKeyboard() });
+  const extra = isPrivate ? { reply_markup: makeReplyKeyboard() } : {};
+  await sendMessage(chatId, text, extra);
+}
+
+async function handleMenu(chatId) {
+  const text = [
+    "🌙 <b>أثر — القائمة الرئيسية</b>",
+    "",
+    "اختر ما تريد:",
+  ].join("\n");
+  const kb = makeInlineKeyboard([
+    [{ text: "📿 أذكار الصباح", callback_data: "menu_morning"    }, { text: "📿 أذكار المساء", callback_data: "menu_evening" }],
+    [{ text: "🌙 أذكار النوم",  callback_data: "menu_sleep"      }, { text: "📿 ذكر",          callback_data: "menu_thikr"   }],
+    [{ text: "📖 آية",           callback_data: "menu_ayah"       }, { text: "🕌 حديث",         callback_data: "menu_hadith"  }],
+    [{ text: "🤲 دعاء",          callback_data: "menu_dua"        }, { text: "🧠 هل تعلم",      callback_data: "menu_didyouknow" }],
+    [{ text: "🏆 مسابقة",        callback_data: "menu_quiz"       }],
+  ]);
+  await sendMessage(chatId, text, { reply_markup: kb });
 }
 
 async function handleDidYouKnow(chatId) {
