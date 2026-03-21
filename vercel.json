@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "functions": {
+    "api/bot.js": {
+      "includeFiles": "data/**,helpers/**"
+    },
+    "api/scheduled-azkar.js": {
+      "includeFiles": "data/**,helpers/**"
+    }
+  }
+}
