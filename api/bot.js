@@ -28,6 +28,7 @@ const {
   makeInlineKeyboard,
   makeReplyKeyboard,
   escapeHtml,
+  getUserDisplayName,
   TASBIH_TYPES,
   buildGroupTasbihMessage,
   buildGroupTasbihKeyboard,
@@ -137,7 +138,7 @@ async function handleMessage(msg) {
   if (text === "/حديث"          || text === "/hadith"      || text === "🕌 حديث")           { await handleHadith(chatId, ct);       return; }
   if (text === "/مسابقة"        || text === "/quiz"        || text === "🏆 مسابقة")         { await handleQuiz(chatId, ct);         return; }
   if (text === "/menu")                                                                      { await handleMenu(chatId, ct);         return; }
-  if (text === "/tasbih" || text === "📿 تسبيح") { await handleTasbih(chatId, chat.type, msg.from && msg.from.id, msg.from && msg.from.first_name); return; }
+  if (text === "/tasbih" || text === "📿 تسبيح") { await handleTasbih(chatId, chat.type, msg.from && msg.from.id, msg.from ? getUserDisplayName(msg.from) : "مستخدم"); return; }
 }
 
 // =============================================
@@ -168,7 +169,7 @@ async function handleCallbackQuery(cq) {
       menu_dua:        () => handleDua(chatId, ct),
       menu_didyouknow: () => handleDidYouKnow(chatId, ct),
       menu_quiz:       () => handleQuiz(chatId, ct),
-      menu_tasbih:     () => handleTasbih(chatId, ct, cq.from.id, cq.from.first_name),
+      menu_tasbih:     () => handleTasbih(chatId, ct, cq.from.id, getUserDisplayName(cq.from)),
     };
     if (menuActions[data]) await menuActions[data]();
     return;
@@ -269,6 +270,7 @@ async function handleInlineQuery(iq) {
   const query = (iq.query || "").trim();
   const iqId  = iq.id;
   const ts    = Date.now();
+  console.log(`[inline] from=${iq.from && iq.from.id} query="${query}"`);
 
   if (!query) {
     await serveDefaultInline(iqId, ts);
@@ -772,7 +774,7 @@ async function handleTasbihCallback(cq, data, doEdit) {
   if (data === "tasbih_choice_s") {
     await answerCallback(cq.id);
     const counts = [0, 0, 0, 0, 0, 0];
-    await doEdit(buildSoloTasbihMessage(from.id, from.first_name || "مستخدم", counts), {
+    await doEdit(buildSoloTasbihMessage(from.id, getUserDisplayName(from), counts), {
       reply_markup: buildSoloTasbihKeyboard(from.id, counts),
     });
     return;
@@ -788,8 +790,8 @@ async function handleTasbihCallback(cq, data, doEdit) {
     // قراءة المشاركين من نص الرسالة (للرسائل العادية فقط)
     const msgText    = cq.message && cq.message.text;
     const participants = parseParticipants(msgText);
-    const name       = from.first_name || "";
-    if (name && !participants.includes(name)) participants.push(name);
+    const name       = getUserDisplayName(from);
+    if (name && name !== "مستخدم" && !participants.includes(name)) participants.push(name);
 
     const label = TASBIH_TYPES[typeIdx] ? TASBIH_TYPES[typeIdx].label : "تسبيح";
     await answerCallback(cq.id, label + " ✨ (" + counts[typeIdx] + ")", false);
@@ -809,7 +811,7 @@ async function handleTasbihCallback(cq, data, doEdit) {
     }
     await answerCallback(cq.id, "تم التصفير ✨");
     const counts = [0, 0, 0, 0, 0, 0];
-    await doEdit(buildSoloTasbihMessage(from.id, from.first_name || "مستخدم", counts), {
+    await doEdit(buildSoloTasbihMessage(from.id, getUserDisplayName(from), counts), {
       reply_markup: buildSoloTasbihKeyboard(from.id, counts),
     });
     return;
@@ -830,7 +832,7 @@ async function handleTasbihCallback(cq, data, doEdit) {
     counts[typeIdx]++;
     const label = TASBIH_TYPES[typeIdx] ? TASBIH_TYPES[typeIdx].label : "تسبيح";
     await answerCallback(cq.id, label + " ✨ (" + counts[typeIdx] + ")", false);
-    await doEdit(buildSoloTasbihMessage(from.id, from.first_name || "مستخدم", counts), {
+    await doEdit(buildSoloTasbihMessage(from.id, getUserDisplayName(from), counts), {
       reply_markup: buildSoloTasbihKeyboard(from.id, counts),
     });
     return;
@@ -841,7 +843,7 @@ async function handleTasbihCallback(cq, data, doEdit) {
 
 async function serveTasbihInline(iqId, ts, from) {
   const userId   = from && from.id;
-  const name     = (from && from.first_name) || "مستخدم";
+  const name     = from ? getUserDisplayName(from) : "مستخدم";
   const counts   = [0, 0, 0, 0, 0, 0];
   const results  = [
     {

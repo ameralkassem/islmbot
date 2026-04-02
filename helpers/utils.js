@@ -88,6 +88,24 @@ function escapeHtml(text) {
     .replace(/>/g, "&gt;");
 }
 
+function getUserDisplayName(user) {
+  if (!user) return "مستخدم";
+  const parts = [];
+  if (user.first_name) parts.push(user.first_name);
+  if (user.last_name)  parts.push(user.last_name);
+  if (parts.length === 0) {
+    if (user.username) return user.username;
+    return "مستخدم";
+  }
+  return parts.join(" ");
+}
+
+function getUserMention(user) {
+  if (!user) return "مستخدم";
+  const name = escapeHtml(getUserDisplayName(user));
+  return `<a href="tg://user?id=${user.id}">${name}</a>`;
+}
+
 // =============================================
 // تنسيق الرسائل
 // =============================================
@@ -185,12 +203,10 @@ function formatQuizQuestion(item) {
 }
 
 // ---- نتيجة المسابقة بعد الإجابة ----
-// user: اختياري { id, first_name } من callbackQuery.from
+// user: اختياري { id, first_name, last_name, username } من callbackQuery.from
 function formatQuizResult(item, chosenIndex, user) {
   const isCorrect   = chosenIndex === item.correct;
-  const userMention = user
-    ? `<a href="tg://user?id=${user.id}">${escapeHtml(user.first_name)}</a>`
-    : null;
+  const userMention = user ? getUserMention(user) : null;
 
   const lines = [
     "🏆 مسابقة إسلامية",
@@ -200,14 +216,13 @@ function formatQuizResult(item, chosenIndex, user) {
   ];
 
   if (isCorrect) {
-    lines.push("✅ الإجابة الصحيحة: " + escapeHtml(item.options[item.correct]));
-    if (userMention) lines.push("🎉 أجاب: " + userMention);
+    lines.push("✅ إجابة صحيحة!");
+    if (userMention) lines.push("👤 " + userMention);
+    lines.push("📝 الإجابة: " + escapeHtml(item.options[item.correct]));
   } else {
-    if (userMention) {
-      lines.push("❌ " + userMention + " أجاب: " + escapeHtml(item.options[chosenIndex]));
-    } else {
-      lines.push("❌ إجابتك: " + escapeHtml(item.options[chosenIndex]));
-    }
+    lines.push("❌ إجابة خاطئة");
+    if (userMention) lines.push("👤 " + userMention);
+    lines.push("📝 أجاب: " + escapeHtml(item.options[chosenIndex]));
     lines.push("✅ الصواب: " + escapeHtml(item.options[item.correct]));
   }
 
@@ -258,20 +273,22 @@ const TASBIH_TYPES = [
 // counts: مصفوفة 6 أرقام، participants: مصفوفة أسماء
 function buildGroupTasbihMessage(counts, participants) {
   const total = counts.reduce((s, v) => s + v, 0);
-  const pList = participants && participants.length
-    ? participants.map(escapeHtml).join("، ")
-    : "لا أحد بعد";
-  return [
+  const lines = [
     "📿 تسبيح جماعي",
     "",
     "سبّحوا معاً واكسبوا الأجر 🤝",
     "",
     "المجموع الكلي: " + total,
     "",
-    "👥 المسبّحون: " + pList,
-    "",
-    SEP, BRAND, ISTIGFAR,
-  ].join("\n");
+    "👥 المسبّحون:",
+  ];
+  if (participants && participants.length) {
+    participants.forEach((name) => lines.push("• " + escapeHtml(name)));
+  } else {
+    lines.push("لا أحد بعد");
+  }
+  lines.push("", SEP, BRAND, ISTIGFAR);
+  return lines.join("\n");
 }
 
 // تسبيح جماعي — الأزرار
@@ -286,13 +303,13 @@ function buildGroupTasbihKeyboard(counts) {
 }
 
 // تسبيح فردي — النص
-function buildSoloTasbihMessage(userId, firstName, counts) {
+function buildSoloTasbihMessage(userId, displayName, counts) {
   const total       = counts.reduce((s, v) => s + v, 0);
-  const userMention = `<a href="tg://user?id=${userId}">${escapeHtml(firstName)}</a>`;
+  const userMention = `<a href="tg://user?id=${userId}">${escapeHtml(displayName)}</a>`;
   return [
     "📿 تسبيح فردي",
     "",
-    "المسبّح: " + userMention,
+    "👤 المسبّح: " + userMention,
     "",
     "المجموع: " + total,
     "",
@@ -315,11 +332,27 @@ function buildSoloTasbihKeyboard(userId, counts) {
 // قراءة مشاركي التسبيح الجماعي من نص الرسالة القديمة
 function parseParticipants(text) {
   if (!text) return [];
-  const line = text.split("\n").find((l) => l.startsWith("👥 المسبّحون:"));
-  if (!line) return [];
-  const after = line.slice("👥 المسبّحون:".length).trim();
-  if (!after || after === "لا أحد بعد") return [];
-  return after.split("، ").filter(Boolean);
+  const textLines = text.split("\n");
+  const headerIdx = textLines.findIndex((l) => l.startsWith("👥 المسبّحون:"));
+  if (headerIdx === -1) return [];
+
+  // التنسيق القديم — الأسماء في نفس السطر بعد النقطتين
+  const after = textLines[headerIdx].slice("👥 المسبّحون:".length).trim();
+  if (after && after !== "لا أحد بعد") {
+    return after.split("، ").filter(Boolean);
+  }
+
+  // التنسيق الجديد — كل اسم بسطر مع •
+  const participants = [];
+  for (let i = headerIdx + 1; i < textLines.length; i++) {
+    const line = textLines[i].trim();
+    if (line.startsWith("• ")) {
+      participants.push(line.slice(2).trim());
+    } else if (line === "" || line.startsWith("ـ")) {
+      break;
+    }
+  }
+  return participants;
 }
 
 // =============================================
@@ -328,6 +361,8 @@ module.exports = {
   getRandom,
   getRandomN,
   escapeHtml,
+  getUserDisplayName,
+  getUserMention,
   callTelegram,
   sendMessage,
   editMessage,
