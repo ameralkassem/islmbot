@@ -27,12 +27,20 @@ const {
   formatQuizResult,
   makeInlineKeyboard,
   makeReplyKeyboard,
+  escapeHtml,
+  TASBIH_TYPES,
+  buildGroupTasbihMessage,
+  buildGroupTasbihKeyboard,
+  buildSoloTasbihMessage,
+  buildSoloTasbihKeyboard,
+  parseParticipants,
 } = require("../helpers/utils");
 
 const dataDir = path.resolve(__dirname, "../data");
 
 const SEP   = "ـــــــــــــــــــــــ";
 const BRAND = "🌙 أثر | @AtharIslamBot";
+const ISTIGFAR = "🤲 أستغفر الله العظيم وأتوب إليه";
 
 // =============================================
 // send() — wrapper يضيف remove_keyboard للمجموعات
@@ -64,6 +72,7 @@ async function registerCommands() {
       { command: "dua",        description: "🤲 دعاء" },
       { command: "didyouknow", description: "🧠 هل تعلم" },
       { command: "quiz",       description: "🏆 مسابقة إسلامية" },
+      { command: "tasbih",     description: "📿 عدّاد التسبيح" },
     ],
   });
 }
@@ -128,6 +137,7 @@ async function handleMessage(msg) {
   if (text === "/حديث"          || text === "/hadith"      || text === "🕌 حديث")           { await handleHadith(chatId, ct);       return; }
   if (text === "/مسابقة"        || text === "/quiz"        || text === "🏆 مسابقة")         { await handleQuiz(chatId, ct);         return; }
   if (text === "/menu")                                                                      { await handleMenu(chatId, ct);         return; }
+  if (text === "/tasbih" || text === "📿 تسبيح") { await handleTasbih(chatId, chat.type, msg.from && msg.from.id, msg.from && msg.from.first_name); return; }
 }
 
 // =============================================
@@ -158,8 +168,14 @@ async function handleCallbackQuery(cq) {
       menu_dua:        () => handleDua(chatId, ct),
       menu_didyouknow: () => handleDidYouKnow(chatId, ct),
       menu_quiz:       () => handleQuiz(chatId, ct),
+      menu_tasbih:     () => handleTasbih(chatId, ct, cq.from.id, cq.from.first_name),
     };
     if (menuActions[data]) await menuActions[data]();
+    return;
+  }
+
+  if (data.startsWith("tasbih_")) {
+    await handleTasbihCallback(cq, data, doEdit);
     return;
   }
 
@@ -241,7 +257,7 @@ async function handleQuizAnswer(cq, data, doEdit) {
   await answerCallback(cq.id, isCorrect ? "✅ إجابة صحيحة! أحسنت 🎉" : "❌ إجابة خاطئة!", true);
 
   // تعديل الرسالة بالنتيجة الكاملة
-  await doEdit(formatQuizResult(item, chosen), {
+  await doEdit(formatQuizResult(item, chosen, cq.from), {
     reply_markup: makeInlineKeyboard([[{ text: "سؤال آخر 🔄", callback_data: "quiz_next" }]]),
   });
 }
@@ -279,6 +295,8 @@ async function handleInlineQuery(iq) {
     await serveAhadithInline(iqId, ts);
   } else if (q.includes("مسابقة") || q.includes("سؤال")) {
     await serveQuizInline(iqId, ts);
+  } else if (q.includes("تسبيح")) {
+    await serveTasbihInline(iqId, ts, iq.from);
   } else {
     await serveSearchInline(iqId, query, ts);
   }
@@ -549,6 +567,7 @@ async function handleStart(chatId, chat) {
       "",
       SEP,
       BRAND,
+      ISTIGFAR,
     ].join("\n");
     await send(chatId, chat.type, text, { reply_markup: makeReplyKeyboard() });
   } else {
@@ -565,6 +584,7 @@ async function handleStart(chatId, chat) {
       "",
       SEP,
       BRAND,
+      ISTIGFAR,
     ].join("\n");
     await send(chatId, chat.type, text);
   }
@@ -598,6 +618,7 @@ async function handleHelp(chatId, chat) {
     "",
     SEP,
     BRAND,
+    ISTIGFAR,
   ].join("\n");
   const extra = isPrivate ? { reply_markup: makeReplyKeyboard() } : {};
   await send(chatId, chat.type, text, extra);
@@ -608,13 +629,17 @@ async function handleMenu(chatId, chatType) {
     "🌙 <b>أثر — القائمة الرئيسية</b>",
     "",
     "اختر ما تريد:",
+    "",
+    SEP,
+    BRAND,
+    ISTIGFAR,
   ].join("\n");
   const kb = makeInlineKeyboard([
     [{ text: "📿 أذكار الصباح", callback_data: "menu_morning"    }, { text: "📿 أذكار المساء", callback_data: "menu_evening" }],
     [{ text: "🌙 أذكار النوم",  callback_data: "menu_sleep"      }, { text: "📿 ذكر",          callback_data: "menu_thikr"   }],
     [{ text: "📖 آية",           callback_data: "menu_ayah"       }, { text: "🕌 حديث",         callback_data: "menu_hadith"  }],
     [{ text: "🤲 دعاء",          callback_data: "menu_dua"        }, { text: "🧠 هل تعلم",      callback_data: "menu_didyouknow" }],
-    [{ text: "🏆 مسابقة",        callback_data: "menu_quiz"       }],
+    [{ text: "🏆 مسابقة",        callback_data: "menu_quiz"       }, { text: "📿 تسبيح", callback_data: "menu_tasbih" }],
   ]);
   await send(chatId, chatType, text, { reply_markup: kb });
 }
@@ -675,7 +700,7 @@ async function sendAzkarFull(chatId, chatType, items, icon, title, intro, comple
     });
 
     if (isLast) {
-      lines.push("", SEP, completion);
+      lines.push("", SEP, completion, "", BRAND, ISTIGFAR);
     }
 
     await send(chatId, chatType, lines.join("\n"));
@@ -712,6 +737,133 @@ async function handleQuiz(chatId, chatType) {
   await send(chatId, chatType, formatQuizQuestion(item), { reply_markup: buildQuizKeyboard(item) });
 }
 
+// ---- تسبيح ----
+async function handleTasbih(chatId, chatType, userId, firstName) {
+  const counts = [0, 0, 0, 0, 0, 0];
+  if (chatType === "private") {
+    // بالخاص: مباشرة للتسبيح الفردي
+    await send(chatId, chatType, buildSoloTasbihMessage(userId, firstName || "مستخدم", counts), {
+      reply_markup: buildSoloTasbihKeyboard(userId, counts),
+    });
+  } else {
+    // بالمجموعة: خيار جماعي أو فردي
+    const text = ["📿 عدّاد التسبيح", "", "اختر نوع العدّاد:"].join("\n");
+    const kb = makeInlineKeyboard([
+      [{ text: "📿 تسبيح جماعي", callback_data: "tasbih_choice_g" }],
+      [{ text: "📿 تسبيح فردي",  callback_data: "tasbih_choice_s" }],
+    ]);
+    await send(chatId, chatType, text, { reply_markup: kb });
+  }
+}
+
+async function handleTasbihCallback(cq, data, doEdit) {
+  const from = cq.from;
+
+  // --- اختيار نوع التسبيح ---
+  if (data === "tasbih_choice_g") {
+    await answerCallback(cq.id);
+    const counts = [0, 0, 0, 0, 0, 0];
+    await doEdit(buildGroupTasbihMessage(counts, []), {
+      reply_markup: buildGroupTasbihKeyboard(counts),
+    });
+    return;
+  }
+
+  if (data === "tasbih_choice_s") {
+    await answerCallback(cq.id);
+    const counts = [0, 0, 0, 0, 0, 0];
+    await doEdit(buildSoloTasbihMessage(from.id, from.first_name || "مستخدم", counts), {
+      reply_markup: buildSoloTasbihKeyboard(from.id, counts),
+    });
+    return;
+  }
+
+  // --- تسبيح جماعي: tasbih_g_TYPEIDX_C0_C1_C2_C3_C4_C5 ---
+  const groupMatch = data.match(/^tasbih_g_(\d+)_(\d+)_(\d+)_(\d+)_(\d+)_(\d+)_(\d+)$/);
+  if (groupMatch) {
+    const typeIdx  = parseInt(groupMatch[1]);
+    const counts   = [1,2,3,4,5,6].map((k) => parseInt(groupMatch[k + 1]));
+    counts[typeIdx]++;
+
+    // قراءة المشاركين من نص الرسالة (للرسائل العادية فقط)
+    const msgText    = cq.message && cq.message.text;
+    const participants = parseParticipants(msgText);
+    const name       = from.first_name || "";
+    if (name && !participants.includes(name)) participants.push(name);
+
+    const label = TASBIH_TYPES[typeIdx] ? TASBIH_TYPES[typeIdx].label : "تسبيح";
+    await answerCallback(cq.id, label + " ✨ (" + counts[typeIdx] + ")", false);
+    await doEdit(buildGroupTasbihMessage(counts, participants), {
+      reply_markup: buildGroupTasbihKeyboard(counts),
+    });
+    return;
+  }
+
+  // --- إعادة ضبط التسبيح الفردي: tasbih_s_rst_USERID ---
+  const rstMatch = data.match(/^tasbih_s_rst_(\d+)$/);
+  if (rstMatch) {
+    const ownerId = rstMatch[1];
+    if (String(from.id) !== String(ownerId)) {
+      await answerCallback(cq.id, "هذا العدّاد خاص بشخص آخر 📿\nابعث /tasbih لتسوي عدّادك", true);
+      return;
+    }
+    await answerCallback(cq.id, "تم التصفير ✨");
+    const counts = [0, 0, 0, 0, 0, 0];
+    await doEdit(buildSoloTasbihMessage(from.id, from.first_name || "مستخدم", counts), {
+      reply_markup: buildSoloTasbihKeyboard(from.id, counts),
+    });
+    return;
+  }
+
+  // --- تسبيح فردي: tasbih_s_TYPEIDX_USERID_C0_C1_C2_C3_C4_C5 ---
+  const soloMatch = data.match(/^tasbih_s_(\d+)_(\d+)_(\d+)_(\d+)_(\d+)_(\d+)_(\d+)_(\d+)$/);
+  if (soloMatch) {
+    const typeIdx  = parseInt(soloMatch[1]);
+    const ownerId  = soloMatch[2];
+    const counts   = [1,2,3,4,5,6].map((k) => parseInt(soloMatch[k + 2]));
+
+    if (String(from.id) !== String(ownerId)) {
+      await answerCallback(cq.id, "هذا العدّاد خاص بشخص آخر 📿\nابعث /tasbih لتسوي عدّادك", true);
+      return;
+    }
+
+    counts[typeIdx]++;
+    const label = TASBIH_TYPES[typeIdx] ? TASBIH_TYPES[typeIdx].label : "تسبيح";
+    await answerCallback(cq.id, label + " ✨ (" + counts[typeIdx] + ")", false);
+    await doEdit(buildSoloTasbihMessage(from.id, from.first_name || "مستخدم", counts), {
+      reply_markup: buildSoloTasbihKeyboard(from.id, counts),
+    });
+    return;
+  }
+
+  await answerCallback(cq.id);
+}
+
+async function serveTasbihInline(iqId, ts, from) {
+  const userId   = from && from.id;
+  const name     = (from && from.first_name) || "مستخدم";
+  const counts   = [0, 0, 0, 0, 0, 0];
+  const results  = [
+    {
+      type: "article",
+      id:   `${ts}_tasbih_g`,
+      title: "📿 تسبيح جماعي",
+      description: "أرسل عدّاد تسبيح جماعي للمحادثة",
+      input_message_content: { message_text: buildGroupTasbihMessage(counts, []), parse_mode: "HTML" },
+      reply_markup: buildGroupTasbihKeyboard(counts),
+    },
+    {
+      type: "article",
+      id:   `${ts}_tasbih_s`,
+      title: "📿 تسبيح فردي",
+      description: "أرسل عدّادك الشخصي باسمك",
+      input_message_content: { message_text: buildSoloTasbihMessage(userId, name, counts), parse_mode: "HTML" },
+      reply_markup: buildSoloTasbihKeyboard(userId, counts),
+    },
+  ];
+  await answerInlineQuery(iqId, results, 0);
+}
+
 function buildQuizKeyboard(item) {
   const rows = item.options.map((opt, i) => [
     { text: `${i + 1} · ${opt}`, callback_data: `quiz_${item.id}_${i}` },
@@ -740,6 +892,7 @@ async function handleMyChatMember(update) {
         "",
         SEP,
         BRAND,
+        ISTIGFAR,
       ].join("\n");
       await send(chat.id, chat.type, text);
       console.log(`Bot added to group: ${chat.id} — ${chat.title}`);
