@@ -1,5 +1,5 @@
 // =============================================
-// مساعدات البوت الإسلامي — أثر | Athar
+// مساعدات البوت الإسلامي — الأثر | Athar
 // =============================================
 
 "use strict";
@@ -106,22 +106,37 @@ function getUserMention(user) {
   return `<a href="tg://user?id=${user.id}">${name}</a>`;
 }
 
+// أزرار مخصصة من متغير بيئة CUSTOM_BUTTONS
+function getCustomButtons() {
+  try {
+    const buttons = JSON.parse(process.env.CUSTOM_BUTTONS || "[]");
+    if (!Array.isArray(buttons) || buttons.length === 0) return [];
+    return buttons.map((btn) => [{ text: btn.text, url: btn.url }]);
+  } catch {
+    return [];
+  }
+}
+
+// =============================================
+// ثوابت التنسيق
+// =============================================
+
+const SEP      = "ـــــــــــــــــــــــ";
+const BRAND    = "الأثر | @AtharIslamBot";
+const ISTIGFAR = "أستغفر الله العظيم وأتوب إليه";
+
 // =============================================
 // تنسيق الرسائل
 // =============================================
 
-const SEP      = "ـــــــــــــــــــــــ";
-const BRAND    = "🌙 أثر | @AtharIslamBot";
-const ISTIGFAR = "أستغفر الله العظيم وأتوب إليه";
-
 // ---- هل تعلم ----
 function formatDidYouKnow(item) {
   return [
-    "🧠 هل تعلم؟",
+    "هل تعلم .",
     "",
     item.text,
     "",
-    "📚 التصنيف: " + item.category,
+    "التصنيف: " + item.category,
     "",
     SEP,
     BRAND,
@@ -129,23 +144,23 @@ function formatDidYouKnow(item) {
   ].join("\n");
 }
 
-// ---- ذكر من أذكار الصباح/المساء/النوم (له count) ----
+// ---- ذكر من أذكار الصباح/المساء/النوم ----
 function formatThikr(item) {
-  const lines = ["📿 ذكر", "", item.text];
+  const lines = ["ذكر .", "", item.text];
   const meta  = [];
-  if (item.count)  meta.push("🔢 التكرار: " + (item.count === 1 ? "مرة واحدة" : item.count + " مرات"));
-  if (item.source) meta.push("📖 المصدر: " + item.source);
+  if (item.count)  meta.push("التكرار: " + (item.count === 1 ? "مرة واحدة" : item.count + " مرات"));
+  if (item.source) meta.push("المصدر: " + item.source);
   if (meta.length) { lines.push(""); lines.push(...meta); }
   lines.push("", SEP, BRAND, ISTIGFAR);
   return lines.join("\n");
 }
 
-// ---- ذكر عام (له occasion) ----
+// ---- ذكر عام ----
 function formatGeneralThikr(item) {
-  const lines = ["📿 ذكر", "", item.text];
+  const lines = ["ذكر .", "", item.text];
   const meta  = [];
-  if (item.occasion) meta.push("📌 المناسبة: " + item.occasion);
-  if (item.source)   meta.push("📖 المصدر: " + item.source);
+  if (item.occasion) meta.push("المناسبة: " + item.occasion);
+  if (item.source)   meta.push("المصدر: " + item.source);
   if (meta.length) { lines.push(""); lines.push(...meta); }
   lines.push("", SEP, BRAND, ISTIGFAR);
   return lines.join("\n");
@@ -154,11 +169,11 @@ function formatGeneralThikr(item) {
 // ---- آية قرآنية ----
 function formatAyah(item) {
   return [
-    "📖 آية قرآنية",
+    "آية .",
     "",
     "﴿" + item.text + "﴾",
     "",
-    "📍 " + item.surah + " · الآية " + item.ayah_number,
+    item.surah + " · " + item.ayah_number,
     "",
     SEP,
     BRAND,
@@ -169,23 +184,24 @@ function formatAyah(item) {
 // ---- حديث نبوي ----
 function formatHadith(item) {
   const lines = [
-    "🕌 حديث نبوي",
+    "حديث .",
     "",
-    "قال رسول الله ﷺ: «" + item.text + "»",
+    "قال رسول الله ﷺ:",
+    "«" + item.text + "»",
     "",
   ];
-  if (item.narrator) lines.push("👤 الراوي: " + item.narrator);
-  if (item.source)   lines.push("📖 المصدر: " + item.source);
+  if (item.narrator) lines.push("الراوي: " + item.narrator);
+  if (item.source)   lines.push("المصدر: " + item.source);
   lines.push("", SEP, BRAND, ISTIGFAR);
   return lines.join("\n");
 }
 
 // ---- دعاء ----
 function formatDua(item) {
-  const lines = ["🤲 دعاء", "", item.text];
+  const lines = ["دعاء .", "", item.text];
   const meta  = [];
-  if (item.occasion) meta.push("📌 المناسبة: " + item.occasion);
-  if (item.source)   meta.push("📖 المصدر: " + item.source);
+  if (item.occasion) meta.push("المناسبة: " + item.occasion);
+  if (item.source)   meta.push("المصدر: " + item.source);
   if (meta.length) { lines.push(""); lines.push(...meta); }
   lines.push("", SEP, BRAND, ISTIGFAR);
   return lines.join("\n");
@@ -194,41 +210,40 @@ function formatDua(item) {
 // ---- سؤال المسابقة ----
 function formatQuizQuestion(item) {
   return [
-    "🏆 مسابقة إسلامية",
+    "مسابقة .",
     "",
-    "❓ " + item.question,
+    item.question,
     "",
-    "اختر الإجابة الصحيحة:",
+    "اختر الإجابة:",
   ].join("\n");
 }
 
 // ---- نتيجة المسابقة بعد الإجابة ----
-// user: اختياري { id, first_name, last_name, username } من callbackQuery.from
 function formatQuizResult(item, chosenIndex, user) {
   const isCorrect   = chosenIndex === item.correct;
   const userMention = user ? getUserMention(user) : null;
 
   const lines = [
-    "🏆 مسابقة إسلامية",
+    "مسابقة .",
     "",
-    "❓ " + escapeHtml(item.question),
+    escapeHtml(item.question),
     "",
   ];
 
   if (isCorrect) {
-    lines.push("✅ إجابة صحيحة!");
-    if (userMention) lines.push("👤 " + userMention);
-    lines.push("📝 الإجابة: " + escapeHtml(item.options[item.correct]));
+    lines.push("إجابة صحيحة");
+    if (userMention) lines.push(userMention);
+    lines.push("الإجابة: " + escapeHtml(item.options[item.correct]));
   } else {
-    lines.push("❌ إجابة خاطئة");
-    if (userMention) lines.push("👤 " + userMention);
-    lines.push("📝 أجاب: " + escapeHtml(item.options[chosenIndex]));
-    lines.push("✅ الصواب: " + escapeHtml(item.options[item.correct]));
+    lines.push("إجابة خاطئة");
+    if (userMention) lines.push(userMention);
+    lines.push("أجاب: " + escapeHtml(item.options[chosenIndex]));
+    lines.push("الصواب: " + escapeHtml(item.options[item.correct]));
   }
 
   if (item.explanation) {
     lines.push("");
-    lines.push("💡 " + escapeHtml(item.explanation));
+    lines.push(escapeHtml(item.explanation));
   }
   lines.push("", SEP, BRAND, ISTIGFAR);
   return lines.join("\n");
@@ -245,11 +260,11 @@ function makeInlineKeyboard(buttons) {
 function makeReplyKeyboard() {
   return {
     keyboard: [
-      [{ text: "📿 أذكار الصباح" }, { text: "📿 أذكار المساء" }],
-      [{ text: "🌙 أذكار النوم" },  { text: "📿 ذكر" }],
-      [{ text: "📖 آية" },           { text: "🕌 حديث" }],
-      [{ text: "🤲 دعاء" },          { text: "🧠 هل تعلم" }],
-      [{ text: "🏆 مسابقة" },        { text: "📿 تسبيح" }],
+      [{ text: "أذكار الصباح" }, { text: "أذكار المساء" }],
+      [{ text: "أذكار النوم" },  { text: "ذكر" }],
+      [{ text: "آية" },          { text: "حديث" }],
+      [{ text: "دعاء" },         { text: "هل تعلم" }],
+      [{ text: "مسابقة" },       { text: "تسبيح" }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -270,20 +285,17 @@ const TASBIH_TYPES = [
 ];
 
 // تسبيح جماعي — النص
-// counts: مصفوفة 6 أرقام، participants: مصفوفة أسماء
 function buildGroupTasbihMessage(counts, participants) {
   const total = counts.reduce((s, v) => s + v, 0);
   const lines = [
-    "📿 تسبيح جماعي",
+    "تسبيح جماعي .",
     "",
-    "سبّحوا معاً واكسبوا الأجر 🤝",
+    "المجموع: " + total,
     "",
-    "المجموع الكلي: " + total,
-    "",
-    "👥 المسبّحون:",
+    "المسبّحون:",
   ];
   if (participants && participants.length) {
-    participants.forEach((name) => lines.push("• " + escapeHtml(name)));
+    participants.forEach((name) => lines.push("· " + escapeHtml(name)));
   } else {
     lines.push("لا أحد بعد");
   }
@@ -292,7 +304,6 @@ function buildGroupTasbihMessage(counts, participants) {
 }
 
 // تسبيح جماعي — الأزرار
-// كل callback_data تحمل جميع الأعداد: tasbih_g_TYPEIDX_C0_C1_C2_C3_C4_C5
 function buildGroupTasbihKeyboard(counts) {
   const cs = counts.join("_");
   return makeInlineKeyboard(
@@ -307,10 +318,9 @@ function buildSoloTasbihMessage(userId, displayName, counts) {
   const total       = counts.reduce((s, v) => s + v, 0);
   const userMention = `<a href="tg://user?id=${userId}">${escapeHtml(displayName)}</a>`;
   return [
-    "📿 تسبيح فردي",
+    "تسبيح فردي .",
     "",
-    "👤 المسبّح: " + userMention,
-    "",
+    "المسبّح: " + userMention,
     "المجموع: " + total,
     "",
     SEP, BRAND, ISTIGFAR,
@@ -318,35 +328,39 @@ function buildSoloTasbihMessage(userId, displayName, counts) {
 }
 
 // تسبيح فردي — الأزرار
-// كل callback_data: tasbih_s_TYPEIDX_USERID_C0_C1_C2_C3_C4_C5
-// زر التصفير: tasbih_s_rst_USERID
 function buildSoloTasbihKeyboard(userId, counts) {
   const cs   = counts.join("_");
   const rows = TASBIH_TYPES.map((t, i) => [
     { text: t.label + " · " + counts[i], callback_data: "tasbih_s_" + i + "_" + userId + "_" + cs },
   ]);
-  rows.push([{ text: "🔄 تصفير العدّاد", callback_data: "tasbih_s_rst_" + userId }]);
+  rows.push([{ text: "تصفير العدّاد", callback_data: "tasbih_s_rst_" + userId }]);
   return makeInlineKeyboard(rows);
 }
 
-// قراءة مشاركي التسبيح الجماعي من نص الرسالة القديمة
+// قراءة مشاركي التسبيح الجماعي من نص الرسالة
 function parseParticipants(text) {
   if (!text) return [];
   const textLines = text.split("\n");
-  const headerIdx = textLines.findIndex((l) => l.startsWith("👥 المسبّحون:"));
+
+  // يدعم التنسيق الجديد (بدون إيموجي) والقديم (مع إيموجي)
+  const headerIdx = textLines.findIndex(
+    (l) => l === "المسبّحون:" || l.startsWith("👥 المسبّحون:")
+  );
   if (headerIdx === -1) return [];
 
   // التنسيق القديم — الأسماء في نفس السطر بعد النقطتين
-  const after = textLines[headerIdx].slice("👥 المسبّحون:".length).trim();
+  const after = textLines[headerIdx].includes(":")
+    ? textLines[headerIdx].split(":").slice(1).join(":").trim()
+    : "";
   if (after && after !== "لا أحد بعد") {
     return after.split("، ").filter(Boolean);
   }
 
-  // التنسيق الجديد — كل اسم بسطر مع •
+  // التنسيق الجديد — كل اسم بسطر مع · أو •
   const participants = [];
   for (let i = headerIdx + 1; i < textLines.length; i++) {
     const line = textLines[i].trim();
-    if (line.startsWith("• ")) {
+    if (line.startsWith("· ") || line.startsWith("• ")) {
       participants.push(line.slice(2).trim());
     } else if (line === "" || line.startsWith("ـ")) {
       break;
@@ -363,6 +377,7 @@ module.exports = {
   escapeHtml,
   getUserDisplayName,
   getUserMention,
+  getCustomButtons,
   callTelegram,
   sendMessage,
   editMessage,

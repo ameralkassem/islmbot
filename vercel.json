@@ -4,8 +4,17 @@
     "api/bot.js": {
       "includeFiles": "data/**,helpers/**"
     },
+    "api/cron.js": {
+      "includeFiles": "data/**,helpers/**"
+    },
     "api/scheduled-azkar.js": {
       "includeFiles": "data/**,helpers/**"
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }
