@@ -38,7 +38,7 @@ const {
   parseParticipants,
 } = require("../helpers/utils");
 
-const { addChatId, removeChatId } = require("../helpers/redis");
+const { redisCommand, addChatId, removeChatId, getAllChatIds, getCachedList } = require("../helpers/redis");
 
 const dataDir = path.resolve(__dirname, "../data");
 
@@ -50,6 +50,9 @@ const ISTIGFAR = "أستغفر الله العظيم وأتوب إليه";
 const BOT_ID = process.env.BOT_TOKEN
   ? parseInt(process.env.BOT_TOKEN.split(":")[0], 10)
   : 0;
+
+// معرّف المالك — الوحيد المخوّل بأوامر الإدارة
+const OWNER_ID = 8681919043;
 
 // =============================================
 // send() — wrapper يضيف remove_keyboard للمجموعات
@@ -124,9 +127,20 @@ module.exports = async (req, res) => {
 async function handleUpdate(update) {
   if (update.message) {
     const chat = update.message.chat;
-    // حفظ الـ Chat ID تلقائياً
-    await addChatId(chat.id, chat.type).catch(() => {});
+    const user = update.message.from;
+    const username = chat.type === "private"
+      ? (user && user.username || "")
+      : (chat.username || "");
+    const name = chat.type === "private"
+      ? getUserDisplayName(user)
+      : (chat.title || "");
+    await addChatId(chat.id, chat.type, username, name).catch(() => {});
     await handleMessage(update.message);
+    return;
+  }
+  if (update.channel_post) {
+    const chat = update.channel_post.chat;
+    await addChatId(chat.id, "channel", chat.username || "", chat.title || "").catch(() => {});
     return;
   }
   if (update.callback_query) { await handleCallbackQuery(update.callback_query); return; }
@@ -150,6 +164,81 @@ async function handleMessage(msg) {
   // شيل @BotUsername من الأمر (للمجموعات: /sleep@AtharIslamBot → /sleep)
   const raw  = (msg.text || "").trim();
   const text = raw.startsWith("/") ? raw.split("@")[0] : raw;
+
+  // =============================================
+  // أوامر المالك — خاص فقط
+  // =============================================
+  if (chat.type === "private" && msg.from && isOwner(msg.from.id)) {
+    // /cancel — يلغي أي عملية جارية فوراً
+    if (text === "/cancel") {
+      await redisCommand(["DEL", `state:${OWNER_ID}`]).catch(() => {});
+      await sendMessage(chatId, "تم الإلغاء.");
+      return;
+    }
+
+    // تحقق من الحالة الحالية
+    const ownerState = await redisCommand(["GET", `state:${OWNER_ID}`]).catch(() => null);
+
+    if (ownerState === "broadcast_all" || ownerState === "broadcast_private") {
+      await redisCommand(["DEL", `state:${OWNER_ID}`]).catch(() => {});
+      const target    = ownerState === "broadcast_private" ? "private" : "all";
+      const startTime = Date.now();
+      const { sent, failed, removed } = await doBroadcast(raw, target);
+      const duration  = Math.round((Date.now() - startTime) / 1000);
+      await sendMessage(chatId, [
+        "تقرير الإرسال .",
+        "",
+        "الهدف: " + (target === "private" ? "الخاص فقط" : "الجميع"),
+        "وصلت: " + sent,
+        "فشلت: " + (failed - removed),
+        "حُذفت من القائمة: " + removed,
+        "الوقت: " + duration + " ثانية",
+        "",
+        SEP, BRAND,
+      ].join("\n"));
+      return;
+    }
+
+    if (ownerState && ownerState.startsWith("send_to_")) {
+      const targetId = ownerState.replace("send_to_", "");
+      await redisCommand(["DEL", `state:${OWNER_ID}`]).catch(() => {});
+      const ok = await sendToUser(targetId, raw);
+      if (ok) {
+        await sendMessage(chatId, [
+          "تم الإرسال .",
+          "",
+          "الرسالة وصلت إلى: " + targetId,
+          "",
+          SEP, BRAND,
+        ].join("\n"));
+      } else {
+        await sendMessage(chatId, [
+          "فشل الإرسال .",
+          "",
+          "الرسالة لم تصل إلى: " + targetId,
+          "السبب: المستخدم حظر البوت أو غير موجود",
+          "",
+          SEP, BRAND,
+        ].join("\n"));
+      }
+      return;
+    }
+
+    if (ownerState && ownerState.startsWith("manage_")) {
+      await handleManageState(chatId, ownerState, msg);
+      return;
+    }
+
+    if (text === "/admin")               { await handleAdmin(chatId);                  return; }
+    if (text === "/stats")               { await handleAdminStats(chatId);             return; }
+    if (text === "/broadcast")           { await handleAdminBroadcastAll(chatId);      return; }
+    if (text === "/broadcastprivate")    { await handleAdminBroadcastPrivate(chatId);  return; }
+    if (text === "/chatlist")            { await handleAdminChatList(chatId, 0);       return; }
+    if (text === "/manage")              { await handleManage(chatId);                 return; }
+    if (text === "/helpadmin")           { await handleAdminHelp(chatId);              return; }
+    if (text.startsWith("/send "))       { await handleSendCommand(chatId, text);      return; }
+    if (text.startsWith("/removechat ")) { await handleRemoveChat(chatId, text);       return; }
+  }
 
   if (text === "/start" || text.startsWith("/start ")) { await handleStart(chatId, chat);      return; }
   if (text === "/help")                                 { await handleHelp(chatId, chat);       return; }
@@ -184,6 +273,72 @@ async function handleCallbackQuery(cq) {
     inlineMsgId
       ? editMessageInline(inlineMsgId, text, extra)
       : editMessage(chatId, msgId, text, extra);
+
+  // أوامر المالك عبر الأزرار
+  if (data.startsWith("admin_") && isOwner(cq.from.id) && chatId) {
+    await answerCallback(cq.id);
+    if (data === "admin_main")              { await handleAdmin(chatId);                 return; }
+    if (data === "admin_stats")             { await handleAdminStats(chatId);            return; }
+    if (data === "admin_broadcast_all")     { await handleAdminBroadcastAll(chatId);     return; }
+    if (data === "admin_broadcast_private") { await handleAdminBroadcastPrivate(chatId); return; }
+    if (data === "admin_chatlist")          { await handleAdminChatList(chatId, 0);      return; }
+    if (data === "admin_manage")            { await handleManage(chatId);                return; }
+    if (data === "admin_help")              { await handleAdminHelp(chatId);             return; }
+    return;
+  }
+
+  if (data.startsWith("manage_") && isOwner(cq.from.id) && chatId) {
+    await answerCallback(cq.id);
+    if (data === "manage_back") {
+      await handleManage(chatId);
+      return;
+    }
+    const mParts   = data.split("_");
+    const mAction  = mParts[1];
+    const mTarget  = mParts.slice(2).join("_");
+
+    if (mAction === "chat") {
+      await handleManageChat(chatId, mTarget);
+      return;
+    }
+    if (mAction === "unpin") {
+      const r = await telegramApi("unpinAllChatMessages", { chat_id: mTarget });
+      await sendMessage(chatId, r.ok ? "تم إلغاء تثبيت كل الرسائل." : "فشل إلغاء التثبيت — تأكد من الصلاحيات.");
+      return;
+    }
+    if (mAction === "invite") {
+      const r = await telegramApi("exportChatInviteLink", { chat_id: mTarget });
+      await sendMessage(chatId, r.ok ? "رابط الدعوة: " + r.result : "فشل جلب الرابط — تأكد من الصلاحيات.");
+      return;
+    }
+    // الإجراءات التي تحتاج رد من المالك → احفظ الحالة
+    const prompts = {
+      post:  (n) => `نشر رسالة في: ${n}\nأرسل الرسالة:\nللإلغاء أرسل /cancel`,
+      delete:(n) => `حذف رسالة من: ${n}\nأرسل رابط الرسالة أو حوّلها:\nللإلغاء أرسل /cancel`,
+      pin:   (n) => `تثبيت رسالة في: ${n}\nأرسل رابط الرسالة أو حوّلها:\nللإلغاء أرسل /cancel`,
+      ban:   (n) => `حظر عضو من: ${n}\nأرسل الـ ID أو اليوزرنيم:\nللإلغاء أرسل /cancel`,
+      unban: (n) => `إلغاء حظر عضو من: ${n}\nأرسل الـ ID أو اليوزرنيم:\nللإلغاء أرسل /cancel`,
+    };
+    if (prompts[mAction]) {
+      const chatName = await redisCommand(["HGET", `chat:${mTarget}`, "name"]).catch(() => null) || mTarget;
+      await redisCommand(["SET", `state:${OWNER_ID}`, `manage_${mAction}_${mTarget}`, "EX", "300"]).catch(() => {});
+      await sendMessage(chatId, prompts[mAction](chatName));
+      return;
+    }
+    return;
+  }
+
+  if (data.startsWith("chatlist_page_") && isOwner(cq.from.id) && chatId && msgId) {
+    const page = parseInt(data.replace("chatlist_page_", ""), 10) || 0;
+    await answerCallback(cq.id);
+    await handleAdminChatList(chatId, page, msgId);
+    return;
+  }
+
+  if (data === "noop") {
+    await answerCallback(cq.id);
+    return;
+  }
 
   if (data.startsWith("menu_")) {
     await answerCallback(cq.id);
@@ -569,7 +724,6 @@ async function serveSearchInline(iqId, query, ts) {
 
 async function handleStart(chatId, chat) {
   await registerCommands();
-  await addChatId(chatId, chat.type).catch(() => {});
   const isPrivate = chat && chat.type === "private";
 
   if (isPrivate) {
@@ -885,7 +1039,7 @@ async function handleMyChatMember(update) {
   const newStatus = update.new_chat_member && update.new_chat_member.status;
   if (chat.type === "group" || chat.type === "supergroup") {
     if (newStatus === "member" || newStatus === "administrator") {
-      await addChatId(chat.id, chat.type).catch(() => {});
+      await addChatId(chat.id, chat.type, chat.username || "", chat.title || "").catch(() => {});
       const text = [
         "الأثر .",
         "",
@@ -911,4 +1065,428 @@ async function handleMyChatMember(update) {
 // =============================================
 function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// =============================================
+// Admin — حماية ومساعدات
+// =============================================
+
+function isOwner(userId) {
+  return userId === OWNER_ID;
+}
+
+async function getStats() {
+  const allIds = await getAllChatIds();
+  let privateCount = 0, groupCount = 0, channelCount = 0;
+  for (const id of allIds) {
+    const type = await redisCommand(["HGET", `chat:${id}`, "type"]).catch(() => null);
+    if (type === "private")                         privateCount++;
+    else if (type === "group" || type === "supergroup") groupCount++;
+    else if (type === "channel")                    channelCount++;
+  }
+  return { privateCount, groupCount, channelCount, total: allIds.length };
+}
+
+async function doBroadcast(text, target) {
+  const allIds = await getAllChatIds();
+  let sent = 0, failed = 0, removed = 0;
+  const BOT_TOKEN = process.env.BOT_TOKEN;
+
+  for (const chatId of allIds) {
+    if (target === "private") {
+      const type = await redisCommand(["HGET", `chat:${chatId}`, "type"]).catch(() => null);
+      if (type !== "private") continue;
+    }
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+      });
+      const result = await response.json();
+      if (result.ok) {
+        sent++;
+      } else {
+        failed++;
+        if (result.error_code === 403 || result.error_code === 400) {
+          await removeChatId(chatId).catch(() => {});
+          removed++;
+        }
+      }
+    } catch {
+      failed++;
+    }
+    await delay(50);
+  }
+  return { sent, failed, removed };
+}
+
+// =============================================
+// Admin — Handlers
+// =============================================
+
+async function handleAdmin(chatId) {
+  const { privateCount, groupCount, channelCount, total } = await getStats();
+  const text = [
+    "لوحة التحكم .",
+    "",
+    "المستخدمون: " + privateCount,
+    "المجموعات: " + groupCount,
+    "القنوات: " + channelCount,
+    "المجموع: " + total,
+    "",
+    SEP, BRAND,
+  ].join("\n");
+  const kb = makeInlineKeyboard([
+    [{ text: "الإحصائيات",       callback_data: "admin_stats"             },
+     { text: "قائمة المشتركين",  callback_data: "admin_chatlist"          }],
+    [{ text: "إرسال للجميع",     callback_data: "admin_broadcast_all"     },
+     { text: "إرسال للخاص فقط", callback_data: "admin_broadcast_private" }],
+    [{ text: "إدارة القنوات والمجموعات", callback_data: "admin_manage"   }],
+    [{ text: "دليل الأوامر",     callback_data: "admin_help"              }],
+  ]);
+  await sendMessage(chatId, text, { reply_markup: kb });
+}
+
+async function handleAdminStats(chatId) {
+  const { privateCount, groupCount, channelCount, total } = await getStats();
+  const text = [
+    "الإحصائيات .",
+    "",
+    "المستخدمون (خاص): " + privateCount,
+    "المجموعات: " + groupCount,
+    "القنوات: " + channelCount,
+    "المجموع: " + total,
+    "",
+    SEP, BRAND,
+  ].join("\n");
+  await sendMessage(chatId, text);
+}
+
+async function handleAdminBroadcastAll(chatId) {
+  await redisCommand(["SET", `state:${OWNER_ID}`, "broadcast_all", "EX", "300"]).catch(() => {});
+  await sendMessage(chatId, "أرسل الرسالة اللي بدك توصل للجميع:\nللإلغاء أرسل /cancel");
+}
+
+async function handleAdminBroadcastPrivate(chatId) {
+  await redisCommand(["SET", `state:${OWNER_ID}`, "broadcast_private", "EX", "300"]).catch(() => {});
+  await sendMessage(chatId, "أرسل الرسالة اللي بدك توصل للخاص فقط:\nللإلغاء أرسل /cancel");
+}
+
+async function getChatListSorted() {
+  return getCachedList();
+}
+
+async function handleAdminChatList(chatId, page = 0, editMsgId = null) {
+  const sorted     = await getChatListSorted();
+  const PER_PAGE   = 20;
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PER_PAGE));
+  page = Math.min(Math.max(page, 0), totalPages - 1);
+  const start     = page * PER_PAGE;
+  const pageItems = sorted.slice(start, start + PER_PAGE);
+
+  // What type did the previous page end with? Avoids repeating section headers
+  let prevType = "";
+  if (start > 0) {
+    const t = sorted[start - 1].type;
+    prevType = (t === "supergroup") ? "group" : t;
+  }
+
+  const lines = [`قائمة المشتركين . صفحة ${page + 1}/${totalPages}`, ""];
+  let counter = start + 1;
+
+  for (const item of pageItems) {
+    const itemType = (item.type === "supergroup") ? "group" : (item.type || "private");
+    if (itemType !== prevType) {
+      if (prevType !== "") lines.push("");          // blank line between sections
+      if (itemType === "channel")    lines.push("قنوات:");
+      else if (itemType === "group") lines.push("مجموعات:");
+      else                           lines.push("خاص:");
+      prevType = itemType;
+    }
+    const uPart = item.username ? ` — @${item.username}` : "";
+    const nPart = item.name     ? ` — ${item.name}`       : "";
+    lines.push(`${counter}. ${item.id}${uPart}${nPart}`);
+    counter++;
+  }
+
+  if (pageItems.length === 0) lines.push("القائمة فارغة.");
+  lines.push("", SEP, BRAND);
+
+  const text    = lines.join("\n");
+  const navBtns = [];
+  if (page > 0) {
+    navBtns.push({ text: "الأول",  callback_data: "chatlist_page_0"                  });
+    navBtns.push({ text: "السابق", callback_data: `chatlist_page_${page - 1}`        });
+  }
+  navBtns.push({ text: `${page + 1}/${totalPages}`, callback_data: "noop" });
+  if (page < totalPages - 1) {
+    navBtns.push({ text: "التالي", callback_data: `chatlist_page_${page + 1}`        });
+    navBtns.push({ text: "الأخير", callback_data: `chatlist_page_${totalPages - 1}`  });
+  }
+  const kb = makeInlineKeyboard([navBtns]);
+
+  if (editMsgId) {
+    await editMessage(chatId, editMsgId, text, { reply_markup: kb });
+  } else {
+    await sendMessage(chatId, text, { reply_markup: kb });
+  }
+}
+
+async function handleAdminHelp(chatId) {
+  const text = [
+    "دليل أوامر المالك .",
+    "",
+    "الإحصائيات والمعلومات:",
+    "/admin — لوحة التحكم الرئيسية",
+    "/stats — إحصائيات المشتركين",
+    "/chatlist — قائمة المشتركين مع التفاصيل",
+    "",
+    "الإرسال:",
+    "/broadcast — إرسال رسالة لجميع المشتركين",
+    "/broadcastprivate — إرسال رسالة للخاص فقط",
+    "/send [ID] — إرسال رسالة لشخص محدد",
+    "  مثال: /send 123456789",
+    "",
+    "التحكم:",
+    "/cancel — إلغاء العملية الحالية",
+    "/removechat [ID] — حذف مشترك من القائمة",
+    "/manage — إدارة المجموعات والقنوات",
+    "",
+    "ملاحظات:",
+    "· كل أوامر المالك تعمل بالخاص فقط",
+    "· بعد كل عملية إرسال يظهر تقرير بالنتائج",
+    "· الحسابات المحظورة تُحذف تلقائياً من القائمة",
+    "· جلسة الإرسال تنتهي بعد 5 دقائق إذا لم ترسل شيئاً",
+    "",
+    SEP, BRAND,
+  ].join("\n");
+  await sendMessage(chatId, text);
+}
+
+// =============================================
+// Admin — إدارة المجموعات والقنوات
+// =============================================
+
+async function telegramApi(method, body) {
+  const BOT_TOKEN = process.env.BOT_TOKEN;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(body),
+    });
+    return res.json();
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+async function getChatInfo(targetId) {
+  return telegramApi("getChat", { chat_id: targetId });
+}
+
+async function getBotMember(targetId) {
+  return telegramApi("getChatMember", { chat_id: targetId, user_id: BOT_ID });
+}
+
+async function getMemberCount(targetId) {
+  return telegramApi("getChatMemberCount", { chat_id: targetId });
+}
+
+async function handleManage(chatId) {
+  const sorted  = await getChatListSorted();
+  const managed = sorted.filter((c) => c.type === "channel" || c.type === "group" || c.type === "supergroup");
+
+  if (managed.length === 0) {
+    await sendMessage(chatId, "لا توجد مجموعات أو قنوات مسجّلة حالياً.");
+    return;
+  }
+
+  const lines   = ["إدارة المجموعات والقنوات .", ""];
+  const buttons = [];
+
+  for (const item of managed.slice(0, 30)) {
+    const label     = item.name || String(item.id);
+    const typeLabel = item.type === "channel" ? "قناة" : "مجموعة";
+    lines.push(`${typeLabel}: ${label}`);
+    const btnText = label.length > 32 ? label.slice(0, 32) + "…" : label;
+    buttons.push([{ text: btnText, callback_data: `manage_chat_${item.id}` }]);
+  }
+
+  lines.push("", SEP, BRAND);
+  buttons.push([{ text: "الرئيسية", callback_data: "admin_main" }]);
+
+  await sendMessage(chatId, lines.join("\n"), { reply_markup: makeInlineKeyboard(buttons) });
+}
+
+async function handleManageChat(chatId, targetId, editMsgId = null) {
+  const [infoRes, memberRes, countRes] = await Promise.all([
+    getChatInfo(targetId),
+    getBotMember(targetId),
+    getMemberCount(targetId),
+  ]);
+
+  const info     = infoRes.ok   ? infoRes.result  : null;
+  const member   = memberRes.ok ? memberRes.result : null;
+  const count    = countRes.ok  ? countRes.result  : "؟";
+  const chatType = info
+    ? info.type
+    : (await redisCommand(["HGET", `chat:${targetId}`, "type"]).catch(() => null) || "unknown");
+  const name     = info ? (info.title || targetId) : targetId;
+  const typeLbl  = chatType === "channel" ? "قناة" : "مجموعة";
+
+  const lines = [`${typeLbl}: ${name} .`, "", `الـ ID: ${targetId}`, `الأعضاء: ${count}`];
+
+  if (member) {
+    const isAdmin = member.status === "administrator";
+    lines.push("", "صلاحيات البوت:");
+    lines.push("المنصب: " + (isAdmin ? "مسؤول" : member.status || "عضو"));
+    if (isAdmin) {
+      const PERM_MAP = {
+        can_post_messages:    "نشر رسائل",
+        can_delete_messages:  "حذف رسائل",
+        can_pin_messages:     "تثبيت رسائل",
+        can_invite_users:     "دعوة أعضاء",
+        can_restrict_members: "تقييد أعضاء",
+      };
+      for (const [key, label] of Object.entries(PERM_MAP)) {
+        if (member[key]) lines.push("· " + label);
+      }
+    }
+  }
+
+  lines.push("", SEP, BRAND);
+
+  const kb = buildManageButtons(targetId, member, chatType);
+  if (editMsgId) {
+    await editMessage(chatId, editMsgId, lines.join("\n"), { reply_markup: kb });
+  } else {
+    await sendMessage(chatId, lines.join("\n"), { reply_markup: kb });
+  }
+}
+
+function buildManageButtons(targetId, member, chatType) {
+  const isAdmin   = member && member.status === "administrator";
+  const can       = (p) => isAdmin && member[p];
+  const isChannel = chatType === "channel";
+  const rows      = [];
+
+  const row1 = [];
+  if (!isChannel || can("can_post_messages")) row1.push({ text: "نشر رسالة",  callback_data: `manage_post_${targetId}`   });
+  if (can("can_delete_messages"))             row1.push({ text: "حذف رسالة",  callback_data: `manage_delete_${targetId}` });
+  if (row1.length) rows.push(row1);
+
+  if (can("can_pin_messages")) {
+    rows.push([
+      { text: "تثبيت رسالة",      callback_data: `manage_pin_${targetId}`   },
+      { text: "إلغاء تثبيت الكل", callback_data: `manage_unpin_${targetId}` },
+    ]);
+  }
+
+  const row3 = [];
+  if (can("can_invite_users"))      row3.push({ text: "رابط الدعوة", callback_data: `manage_invite_${targetId}` });
+  if (can("can_restrict_members")) {
+    row3.push({ text: "حظر عضو", callback_data: `manage_ban_${targetId}`   });
+    row3.push({ text: "رفع حظر", callback_data: `manage_unban_${targetId}` });
+  }
+  if (row3.length) rows.push(row3);
+
+  rows.push([{ text: "رجوع", callback_data: "manage_back" }]);
+  return makeInlineKeyboard(rows);
+}
+
+async function handleManageState(chatId, state, msg) {
+  const parts    = state.split("_");
+  const action   = parts[1];
+  const targetId = parts.slice(2).join("_");
+
+  await redisCommand(["DEL", `state:${OWNER_ID}`]).catch(() => {});
+
+  if (action === "post") {
+    const r = await telegramApi("sendMessage", {
+      chat_id:    targetId,
+      text:       msg.text || "",
+      parse_mode: "HTML",
+    });
+    await sendMessage(chatId, r.ok ? "تم النشر بنجاح." : `فشل النشر: ${r.description || "خطأ"}`);
+    return;
+  }
+
+  if (action === "delete" || action === "pin") {
+    const msgId = msg.forward_from_message_id || extractMessageId(msg.text);
+    if (!msgId) {
+      await sendMessage(chatId, "لم أتمكن من تحديد رقم الرسالة.\nحوّل الرسالة مباشرة أو أرسل الرابط.");
+      return;
+    }
+    const method     = action === "delete" ? "deleteMessage" : "pinChatMessage";
+    const r          = await telegramApi(method, { chat_id: targetId, message_id: msgId });
+    const successMsg = action === "delete" ? "تم حذف الرسالة." : "تم تثبيت الرسالة.";
+    await sendMessage(chatId, r.ok ? successMsg : `فشل: ${r.description || "خطأ"}`);
+    return;
+  }
+
+  if (action === "ban" || action === "unban") {
+    const userId = extractUserId(msg.text);
+    if (!userId) {
+      await sendMessage(chatId, "لم أتعرف على الـ ID. أرسل رقم ID صحيح.");
+      return;
+    }
+    const method     = action === "ban" ? "banChatMember" : "unbanChatMember";
+    const r          = await telegramApi(method, { chat_id: targetId, user_id: userId });
+    const successMsg = action === "ban" ? "تم الحظر." : "تم رفع الحظر.";
+    await sendMessage(chatId, r.ok ? successMsg : `فشل: ${r.description || "خطأ"}`);
+    return;
+  }
+
+  await sendMessage(chatId, "إجراء غير معروف.");
+}
+
+function extractMessageId(text) {
+  if (!text) return null;
+  const t = text.trim();
+  if (/^\d+$/.test(t)) return parseInt(t);
+  const m = t.match(/\/(\d+)\/?$/);
+  return m ? parseInt(m[1]) : null;
+}
+
+function extractUserId(text) {
+  if (!text) return null;
+  const t = text.trim();
+  return /^-?\d+$/.test(t) ? parseInt(t) : null;
+}
+
+async function sendToUser(targetId, text) {
+  const BOT_TOKEN = process.env.BOT_TOKEN;
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: targetId, text, parse_mode: "HTML" }),
+    });
+    const result = await response.json();
+    return result.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+async function handleSendCommand(chatId, text) {
+  const targetId = text.split(" ")[1];
+  if (!targetId || isNaN(Number(targetId))) {
+    await sendMessage(chatId, "الصيغة الصحيحة:\n/send 123456789");
+    return;
+  }
+  await redisCommand(["SET", `state:${OWNER_ID}`, `send_to_${targetId}`, "EX", "300"]).catch(() => {});
+  await sendMessage(chatId, `إرسال رسالة إلى: ${targetId}\nأرسل الرسالة:\nللإلغاء أرسل /cancel`);
+}
+
+async function handleRemoveChat(chatId, text) {
+  const targetId = text.split(" ")[1];
+  if (!targetId || isNaN(Number(targetId))) {
+    await sendMessage(chatId, "الصيغة الصحيحة:\n/removechat 123456789");
+    return;
+  }
+  await removeChatId(targetId).catch(() => {});
+  await sendMessage(chatId, `تم حذف ${targetId} من القائمة.`);
 }
